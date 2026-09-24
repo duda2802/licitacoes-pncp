@@ -300,6 +300,15 @@ def buscar_itens(compra, tamanho=50):
         return None
 
 
+def item_de_servico(item):
+    """Item de serviço/peça: marcado como serviço no catálogo ou descrição que começa
+    com locação, manutenção, peça etc. ("14507-Locação de equipamento ...")."""
+    if item.get("materialOuServico") == "S":
+        return True
+    palavras = [p for p in normalizar(item.get("descricao")).split() if not p.isdigit()]
+    return any(p in NAO_E_COMPRA for p in palavras[:3])
+
+
 def avaliar_itens(compra, termos):
     """Decide se o pregão tem implemento sem caminhão.
 
@@ -316,7 +325,7 @@ def avaliar_itens(compra, termos):
     # descrições dos itens não usam os termos (ex.: objeto "trator e implementos
     # agrícolas", itens "Trator", "Grade aradora"): entram os itens de material
     # que não são veículo; se todos forem (item único "Caminhão pipa 0 km"), descarta
-    materiais = [i for i in itens if i.get("materialOuServico") != "S"]
+    materiais = [i for i in itens if not item_de_servico(i)]
     if not materiais:  # só itens de serviço no catálogo: decide pelo objeto
         return not inclui_caminhao(compra.get("objetoCompra")), [], "objeto (itens de serviço)"
     sem_veiculo = [i for i in materiais if not inclui_caminhao(i.get("descricao"))]
