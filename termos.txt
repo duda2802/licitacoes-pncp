@@ -1,0 +1,126 @@
+# Termos procurados no objeto dos pregões (pncp_implementos.py).
+#
+# Formato:
+#   === CATEGORIA: NOME ===   abre uma categoria; os termos abaixo pertencem a ela
+#   um termo por linha
+#   linhas vazias e linhas começando com # são ignoradas
+#
+# A busca ignora acentos, maiúsculas, plural, hífen e apóstrofo, e aceita
+# preposição entre as palavras ("tanque de água" também acha "tanque para água").
+# Evite termos soltos e genéricos ("tanque", "plataforma", "caçamba"...).
+
+=== CATEGORIA: TANQUE DE ÁGUA / PIPA ===
+tanque pipa
+caminhão pipa
+tanque de água
+tanque para água
+tanque d'água
+tanque irrigação
+tanque para irrigação
+tanque bombeiro
+tanque de combate a incêndio
+tanque para transporte de água
+pipa d'água
+irrigadeira
+espargidor
+carretel de irrigação
+canhão de água
+rabo de pavão
+tanque sobre chassi
+instalação em chassi
+instalação sobre chassi
+montagem sobre chassi
+implemento sobre chassi
+
+=== CATEGORIA: TANQUE ISOTÉRMICO / LEITE ===
+tanque isotérmico
+tanque de leite
+tanque para leite
+transporte de leite
+tanque inox
+tanque em aço inox
+tanque alimentício
+
+=== CATEGORIA: COLETOR / COMPACTADOR DE LIXO ===
+coletor compactador
+compactador de lixo
+coletor de lixo
+coletor de resíduos
+caminhão de lixo
+caminhão coletor
+caixa compactadora
+equipamento compactador
+coleta de resíduos sólidos
+basculador de contêiner
+lifter
+
+=== CATEGORIA: CAÇAMBA BASCULANTE ===
+caçamba basculante
+basculante
+caminhão basculante
+caçamba meia cana
+meia cana
+caçamba graneleira
+caçamba roll on
+roll on roll off
+roll-on roll-off
+piso móvel
+caçamba sucateira
+caçamba de reciclável
+caçamba para caminhão
+
+=== CATEGORIA: POLIGUINDASTE ===
+poliguindaste
+poliguindaste simples
+poliguindaste duplo
+poliguindaste articulado
+caminhão poliguindaste
+brook
+
+=== CATEGORIA: PLATAFORMA / AUTO SOCORRO / PRANCHA ===
+plataforma auto socorro
+auto socorro
+guincho plataforma
+caminhão guincho
+caminhão plataforma
+plataforma rodoviária
+plataforma para transporte de máquinas
+prancha
+carroceria plataforma
+asa delta
+
+=== CATEGORIA: CARROCERIA / CESTO AÉREO / GUINDASTE ===
+cesto aéreo
+caminhão cesto aéreo
+caminhão com cesto aéreo
+carroceria com cesto aéreo
+carroceria carga seca
+carroceria de madeira
+carroceria metálica
+carroceria sobre chassi
+caminhão munck
+munck
+guindaste veicular
+guindaste articulado
+caminhão com guindaste
+
+=== CATEGORIA: COMBOIO / MELOSA ===
+comboio melosa
+caminhão comboio
+melosa
+comboio de lubrificação
+comboio de abastecimento
+caminhão melosa
+tanque de combustível para caminhão
+unidade de abastecimento
+
+=== CATEGORIA: IMPLEMENTOS EM GERAL ===
+implemento rodoviário
+implementos rodoviários
+implemento agrícola
+implementos agrícolas
+carreta agrícola
+tanque vácuo
+tanque de vácuo
+roçadeira
+terraceador
