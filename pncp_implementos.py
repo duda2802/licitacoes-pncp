@@ -116,9 +116,19 @@ COMPRA = {"aquisicao", "aquisicoes", "compra", "compras", "adquirir"}
 JANELA = 20
 
 
+# Termo que é o próprio caminhão ("caminhão pipa") depois de "para"/"no"/"em" é
+# destino de outra coisa: "mangueiras PARA caminhão-pipa", "pneus NO caminhão".
+ANTES_DE_CAMINHAO_DESTINO = {"para", "p", "em", "no", "na", "nos", "nas", "sobre",
+                             "a", "ao", "aos"}
+
+
 def ocorrencia_de_compra(texto_normalizado, inicio):
     """False se o termo que começa em `inicio` é objeto de serviço/peça, não de compra."""
-    for palavra in reversed(texto_normalizado[:inicio].split()[-JANELA:]):
+    antes = texto_normalizado[:inicio].split()
+    if (antes and antes[-1] in ANTES_DE_CAMINHAO_DESTINO
+            and RE_VEICULO.match(texto_normalizado, inicio)):
+        return False
+    for palavra in reversed(antes[-JANELA:]):
         if palavra in COMPRA:
             return True
         if palavra in NAO_E_COMPRA:
@@ -216,8 +226,8 @@ class ErroAPI(Exception):
     pass
 
 
-def get_json(url, params, tentativas=4):
-    """GET com retentativas (a API do PNCP oscila bastante)."""
+def get_json(url, params, tentativas=7):
+    """GET com retentativas (a API do PNCP oscila bastante e limita o ritmo com 429)."""
     url = url + "?" + urllib.parse.urlencode(params)
     for i in range(tentativas):
         try:
@@ -231,7 +241,13 @@ def get_json(url, params, tentativas=4):
             if isinstance(exc, urllib.error.HTTPError) and exc.code < 500 and exc.code != 429:
                 corpo = exc.read().decode("utf-8", "replace")
                 raise ErroAPI(f"Erro {exc.code} da API em {url}: {corpo}") from exc
-            espera = 2 ** (i + 1)
+            if i == tentativas - 1:
+                break
+            espera = min(2 ** (i + 1), 60)
+            if isinstance(exc, urllib.error.HTTPError) and exc.code == 429:
+                # respeita o Retry-After da API (em segundos), se vier
+                retry_after = exc.headers.get("Retry-After", "")
+                espera = max(espera, int(retry_after) if retry_after.isdigit() else 30)
             print(f"  falha ({exc}); nova tentativa em {espera}s...", file=sys.stderr)
             time.sleep(espera)
     raise ErroAPI(f"Não foi possível consultar {url}")
