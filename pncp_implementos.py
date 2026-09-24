@@ -4,6 +4,10 @@ Consulta a API pública do PNCP e lista pregões eletrônicos com propostas
 abertas cujo objeto contenha algum dos termos de termos.txt (implementos
 rodoviários: tanques, coletores, caçambas, poliguindastes, plataformas etc.).
 
+Descarta o que é compra do caminhão junto com o implemento: os itens de cada
+pregão são conferidos um a um e o pregão só entra se tiver ao menos um item
+que seja só o implemento (ex.: lote de "caçamba basculante para caminhão").
+
 Endpoint: GET https://pncp.gov.br/api/consulta/v1/contratacoes/proposta
 Manual:   https://pncp.gov.br/api/consulta/swagger-ui/index.html
 
@@ -12,6 +16,7 @@ Uso:
     python pncp_implementos.py --uf MG --dias 30
     python pncp_implementos.py --csv resultado.csv
     python pncp_implementos.py --termos outro_arquivo.txt
+    python pncp_implementos.py --incluir-caminhao   # não descarta caminhão + implemento
 """
 
 import argparse
@@ -28,6 +33,7 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 
 API_URL = "https://pncp.gov.br/api/consulta/v1/contratacoes/proposta"
+API_ITENS = "https://pncp.gov.br/api/pncp/v1/orgaos/{cnpj}/compras/{ano}/{seq}/itens"
 MODALIDADE_PREGAO_ELETRONICO = 6
 TAMANHO_PAGINA = 50  # máximo aceito pela API
 
@@ -98,24 +104,61 @@ def termos_encontrados(objeto, termos):
     return [(cat, termo) for cat, termo, rx in termos if rx.search(obj)]
 
 
-def get_json(params, tentativas=4):
+# --- Caminhão junto com o implemento -------------------------------------
+# "caminhão"/"veículo" no texto indica que o caminhão está sendo comprado,
+# exceto quando aparece como destino do implemento: "caçamba PARA caminhão",
+# "instalado NO caminhão", "tomada de força DO caminhão", "chassi DE caminhão".
+RE_VEICULO = re.compile(r"\b(?:caminh(?:ao|oes)|veiculos?|cavalos? mecanicos?)\b")
+DESTINO = {"para", "p", "em", "no", "na", "nos", "nas", "sobre", "sob", "ao", "aos",
+           "do", "da", "dos", "das", "ate"}
+ARTIGOS = {"o", "a", "os", "as", "um", "uma", "uns", "umas", "seu", "sua", "seus", "suas"}
+# "... de caminhão" só é destino depois destas palavras ("chassi de caminhão")
+ANTES_DE_DESTINO = {"chassi", "chassis", "modelo", "modelos", "marca", "marcas",
+                    "frota", "cabine", "carroceria"}
+# chassi fornecido junto: "com chassi", "chassi cabinado", "chassi 0 km"
+RE_CHASSI_JUNTO = re.compile(
+    r"\b(?:com|incluindo|inclusive|mais|e) (?:o |um )?chassis?\b"
+    r"|\bchassis? (?:cabinad|com cabine|novo|0 ?km|zero)")
+
+
+def inclui_caminhao(texto):
+    """True se o texto indica compra do caminhão (não só do implemento)."""
+    t = normalizar(texto)
+    if RE_CHASSI_JUNTO.search(t):
+        return True
+    for m in RE_VEICULO.finditer(t):
+        antes = [p for p in t[:m.start()].split() if p not in ARTIGOS]
+        anterior = antes[-1] if antes else ""
+        if anterior in DESTINO:
+            continue
+        if anterior == "de" and len(antes) > 1 and antes[-2] in ANTES_DE_DESTINO:
+            continue
+        return True
+    return False
+
+
+class ErroAPI(Exception):
+    pass
+
+
+def get_json(url, params, tentativas=4):
     """GET com retentativas (a API do PNCP oscila bastante)."""
-    url = API_URL + "?" + urllib.parse.urlencode(params)
+    url = url + "?" + urllib.parse.urlencode(params)
     for i in range(tentativas):
         try:
             req = urllib.request.Request(url, headers={"Accept": "application/json"})
             with urllib.request.urlopen(req, timeout=60) as resp:
                 if resp.status == 204:  # sem conteúdo
-                    return {"data": [], "totalPaginas": 0}
+                    return None
                 return json.loads(resp.read().decode("utf-8"))
         except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
             if isinstance(exc, urllib.error.HTTPError) and exc.code < 500 and exc.code != 429:
                 corpo = exc.read().decode("utf-8", "replace")
-                raise SystemExit(f"Erro {exc.code} da API: {corpo}") from exc
+                raise ErroAPI(f"Erro {exc.code} da API em {url}: {corpo}") from exc
             espera = 2 ** (i + 1)
             print(f"  falha ({exc}); nova tentativa em {espera}s...", file=sys.stderr)
             time.sleep(espera)
-    raise SystemExit(f"Não foi possível consultar {url}")
+    raise ErroAPI(f"Não foi possível consultar {url}")
 
 
 def buscar_contratacoes(data_final, uf=None):
@@ -130,13 +173,58 @@ def buscar_contratacoes(data_final, uf=None):
         }
         if uf:
             params["uf"] = uf.upper()
-        dados = get_json(params)
+        try:
+            dados = get_json(API_URL, params) or {}
+        except ErroAPI as exc:
+            raise SystemExit(str(exc)) from exc
         total_paginas = dados.get("totalPaginas") or 0
         print(f"  página {pagina}/{total_paginas}", file=sys.stderr)
         yield from dados.get("data") or []
         if pagina >= total_paginas:
             break
         pagina += 1
+
+
+def buscar_itens(compra, tamanho=50):
+    """Itens da contratação, ou None se a API de itens falhar."""
+    orgao = compra.get("orgaoEntidade") or {}
+    cnpj, ano, seq = orgao.get("cnpj"), compra.get("anoCompra"), compra.get("sequencialCompra")
+    if not (cnpj and ano and seq):
+        return None
+    url = API_ITENS.format(cnpj=cnpj, ano=ano, seq=seq)
+    itens, vistos, pagina = [], set(), 1
+    try:
+        while True:
+            lote = get_json(url, {"pagina": pagina, "tamanhoPagina": tamanho}) or []
+            novos = [i for i in lote if i.get("numeroItem") not in vistos]
+            vistos.update(i.get("numeroItem") for i in novos)
+            itens += novos
+            # para quando a página vem incompleta ou repetida (API sem paginação)
+            if len(lote) < tamanho or not novos:
+                return itens
+            pagina += 1
+    except ErroAPI as exc:
+        print(f"  itens indisponíveis ({exc})", file=sys.stderr)
+        return None
+
+
+def avaliar_itens(compra, termos):
+    """Decide se o pregão tem implemento sem caminhão.
+
+    Retorna (aceita, itens_de_interesse, verificacao).
+    """
+    itens = buscar_itens(compra)
+    if not itens:  # sem itens: decide só pelo objeto
+        aceita = not inclui_caminhao(compra.get("objetoCompra"))
+        return aceita, [], "objeto (itens indisponíveis)"
+    com_termo = [i for i in itens if termos_encontrados(i.get("descricao"), termos)]
+    implemento = [i for i in com_termo if not inclui_caminhao(i.get("descricao"))]
+    if implemento:
+        return True, implemento, "itens"
+    if not com_termo and not any(inclui_caminhao(i.get("descricao")) for i in itens):
+        # descrições dos itens não usam os termos, mas nenhum item é caminhão
+        return not inclui_caminhao(compra.get("objetoCompra")), [], "itens (sem termo)"
+    return False, [], "itens"
 
 
 def parse_data(valor):
@@ -164,7 +252,16 @@ def formatar_valor(valor):
     return "R$ " + s.replace(",", "X").replace(".", ",").replace("X", ".")
 
 
-def montar_resultado(item, encontrados):
+def formatar_itens(itens):
+    partes = []
+    for i in itens:
+        desc = " ".join((i.get("descricao") or "").split())[:120]
+        partes.append(f"item {i.get('numeroItem')}: {desc} "
+                      f"({formatar_valor(i.get('valorTotal'))})")
+    return " || ".join(partes)
+
+
+def montar_resultado(item, encontrados, itens_implemento=(), verificacao=""):
     orgao = item.get("orgaoEntidade") or {}
     unidade = item.get("unidadeOrgao") or {}
     categorias = list(dict.fromkeys(cat for cat, _ in encontrados))
@@ -175,6 +272,10 @@ def montar_resultado(item, encontrados):
         "municipio": unidade.get("municipioNome", ""),
         "uf": unidade.get("ufSigla", ""),
         "valor_estimado": item.get("valorTotalEstimado"),
+        "valor_itens_implemento": (sum(i.get("valorTotal") or 0 for i in itens_implemento)
+                                   if itens_implemento else None),
+        "itens_implemento": formatar_itens(itens_implemento),
+        "verificacao_caminhao": verificacao,
         "encerramento_proposta": item.get("dataEncerramentoProposta", ""),
         "objeto": " ".join((item.get("objetoCompra") or "").split()),
         "termos": ", ".join(termo for _, termo in encontrados),
@@ -184,7 +285,7 @@ def montar_resultado(item, encontrados):
     }
 
 
-def filtrar(itens, termos, agora):
+def filtrar(itens, termos, agora, incluir_caminhao=False, descartados=None):
     vistos = set()
     for item in itens:
         chave = item.get("numeroControlePNCP")
@@ -196,8 +297,16 @@ def filtrar(itens, termos, agora):
         if fim and fim < agora:
             continue
         encontrados = termos_encontrados(item.get("objetoCompra"), termos)
-        if encontrados:
-            yield montar_resultado(item, encontrados)
+        if not encontrados:
+            continue
+        if incluir_caminhao:
+            yield montar_resultado(item, encontrados, verificacao="desligada")
+            continue
+        aceita, itens_impl, verificacao = avaliar_itens(item, termos)
+        if aceita:
+            yield montar_resultado(item, encontrados, itens_impl, verificacao)
+        elif descartados is not None:
+            descartados.append(item)
 
 
 def imprimir(resultados):
@@ -213,7 +322,14 @@ def imprimir(resultados):
             print(f"    Unidade:     {r['unidade']}")
         print(f"    Local:       {r['municipio']}/{r['uf']}")
         print(f"    Valor est.:  {formatar_valor(r['valor_estimado'])}")
+        if r["itens_implemento"]:
+            print(f"    Itens impl.: {formatar_valor(r['valor_itens_implemento'])} em "
+                  f"{r['itens_implemento'].count(' || ') + 1} item(ns)")
+            for linha in r["itens_implemento"].split(" || "):
+                print(f"      - {linha}")
         print(f"    Encerra em:  {fim_txt}")
+        if r["verificacao_caminhao"].startswith("objeto"):
+            print("    Atenção:     itens não conferidos; confira no edital se inclui o caminhão")
         print(f"    Termos:      {r['termos']}")
         print(f"    Objeto:      {r['objeto'][:300]}")
         print(f"    Edital:      {r['link_edital']}")
@@ -248,6 +364,8 @@ def main():
     ap.add_argument("--termo", action="append", default=[],
                     help="termo extra a procurar no objeto, além do arquivo (pode repetir)")
     ap.add_argument("--csv", help="também salva o resultado em CSV")
+    ap.add_argument("--incluir-caminhao", action="store_true",
+                    help="não descarta pregões que compram o caminhão junto com o implemento")
     args = ap.parse_args()
 
     termos = carregar_termos(args.termos)
@@ -258,10 +376,14 @@ def main():
     print(f"Consultando pregões eletrônicos com proposta aberta até "
           f"{data_final:%d/%m/%Y}{' em ' + args.uf.upper() if args.uf else ''}...", file=sys.stderr)
     itens = buscar_contratacoes(data_final, args.uf)
-    resultados = list(filtrar(itens, termos, datetime.now()))
+    descartados = []
+    resultados = list(filtrar(itens, termos, datetime.now(), args.incluir_caminhao, descartados))
     resultados.sort(key=lambda r: r["encerramento_proposta"] or "")
 
     imprimir(resultados)
+    if descartados:
+        print(f"\n{len(descartados)} pregão(ões) descartado(s) por incluir o caminhão "
+              f"(use --incluir-caminhao para vê-los).")
     if args.csv:
         salvar_csv(resultados, args.csv)
 
