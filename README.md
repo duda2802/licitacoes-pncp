@@ -18,8 +18,26 @@ item** (API `/api/pncp/v1/orgaos/{cnpj}/compras/{ano}/{seq}/itens`): se houver
 ao menos um item que seja só o implemento, o pregão entra e esses itens aparecem
 no resultado, com o valor deles.
 
+O mesmo vale para caminhonete/picape e trator ("trator agrícola **e** roçadeira"
+em um único item é compra do trator).
+
 "Caminhão" como destino do implemento não descarta: "caçamba **para** caminhão",
-"instalado **no** caminhão", "acoplado **ao** caminhão", "chassi **de** caminhão".
+"instalado **no** caminhão", "acoplável **a** trator", "chassi **de** caminhão",
+"sobrechassi de caminhão", "compatível **com** caminhão", "transporte **de** veículos",
+e "caminhão fornecido pela Administração / pertencente ao Município".
+
+Se nenhum item usa os termos (objeto "trator e implementos agrícolas", itens
+"Trator", "Grade aradora"), entram os itens que não são veículo.
+
+## Serviço, locação, manutenção e peças não contam
+
+O termo só vale quando o objeto é a compra do implemento. Se, nas 20 palavras
+antes do termo, a palavra mais próxima de serviço/locação/manutenção/peças vier
+antes de uma palavra de compra, o termo é ignorado: "locação de caminhão pipa",
+"prestação de serviços de caminhão munck", "peças para manutenção dos implementos
+agrícolas", "fornecimento de água potável em caminhão pipa" (serviço) ficam de fora;
+"aquisição de peças ... bem como a aquisição de roçadeiras novas" entra.
+A lista de palavras está em `NAO_E_COMPRA` no script.
 
 Se a API de itens falhar, a decisão é feita só pelo objeto e o resultado vem com
 um aviso para conferir no edital. Para ver também os pregões descartados, use
@@ -42,8 +60,10 @@ hífen e apóstrofo, e aceita uma preposição entre as palavras
 Se um pregão casar com termos de mais de uma categoria, todas aparecem na coluna
 `categoria`, separadas por ` | `.
 
-Evite termos soltos e genéricos ("tanque", "plataforma", "caçamba"): trazem
-muita coisa sem relação com os produtos.
+Evite termos soltos e genéricos ("tanque", "plataforma", "caçamba", "basculante",
+"prancha", "roçadeira", "coletor de lixo"): trazem portão basculante, prancha de
+madeira, roçadeira costal, lixeira etc. "tipo" entre as palavras também é aceito
+("reboque prancha" acha "reboque tipo prancha").
 
 ## Uso
 

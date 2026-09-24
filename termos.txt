@@ -7,7 +7,9 @@
 #
 # A busca ignora acentos, maiúsculas, plural, hífen e apóstrofo, e aceita
 # preposição entre as palavras ("tanque de água" também acha "tanque para água").
-# Evite termos soltos e genéricos ("tanque", "plataforma", "caçamba"...).
+# Evite termos soltos e genéricos ("tanque", "plataforma", "caçamba",
+# "basculante", "prancha", "coletor de lixo"): trazem portão basculante,
+# prancha de madeira, lixeira etc.
 
 === CATEGORIA: TANQUE DE ÁGUA / PIPA ===
 tanque pipa
@@ -20,6 +22,8 @@ tanque para irrigação
 tanque bombeiro
 tanque de combate a incêndio
 tanque para transporte de água
+carreta tanque
+carreta pipa
 pipa d'água
 irrigadeira
 espargidor
@@ -44,20 +48,22 @@ tanque alimentício
 === CATEGORIA: COLETOR / COMPACTADOR DE LIXO ===
 coletor compactador
 compactador de lixo
-coletor de lixo
-coletor de resíduos
 caminhão de lixo
 caminhão coletor
 caixa compactadora
+compactador de resíduos
 equipamento compactador
-coleta de resíduos sólidos
 basculador de contêiner
 lifter
 
 === CATEGORIA: CAÇAMBA BASCULANTE ===
 caçamba basculante
-basculante
 caminhão basculante
+caminhão caçamba
+carroceria basculante
+semirreboque basculante
+reboque basculante
+rodotrem basculante
 caçamba meia cana
 meia cana
 caçamba graneleira
@@ -85,7 +91,12 @@ caminhão guincho
 caminhão plataforma
 plataforma rodoviária
 plataforma para transporte de máquinas
-prancha
+caminhão prancha
+reboque prancha
+semirreboque prancha
+prancha carrega tudo
+carrega tudo
+prancha rodoviária
 carroceria plataforma
 asa delta
 
@@ -95,6 +106,7 @@ caminhão cesto aéreo
 caminhão com cesto aéreo
 carroceria com cesto aéreo
 carroceria carga seca
+carroceria de carga
 carroceria de madeira
 carroceria metálica
 carroceria sobre chassi
@@ -120,7 +132,15 @@ implementos rodoviários
 implemento agrícola
 implementos agrícolas
 carreta agrícola
+carretinha agrícola
+semirreboque
+semi reboque
 tanque vácuo
 tanque de vácuo
-roçadeira
+roçadeira hidráulica
+roçadeira agrícola
+roçadeira tratorizada
+roçadeira articulada
+roçadeira de arrasto
+roçadeira para trator
 terraceador

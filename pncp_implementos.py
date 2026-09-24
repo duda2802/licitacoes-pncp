@@ -21,6 +21,7 @@ Uso:
 
 import argparse
 import csv
+import http.client
 import json
 import re
 import sys
@@ -42,9 +43,10 @@ ARQUIVO_TERMOS = Path(__file__).with_name("termos.txt")
 CATEGORIA_EXTRA = "TERMO EXTRA"
 
 # Entre as palavras de um termo aceita-se uma destas preposições (ou nenhuma):
-# "tanque de água" casa "tanque para água", "tanque d'água" e "tanque água".
+# "tanque de água" casa "tanque para água", "tanque d'água" e "tanque água";
+# "tipo" também: "reboque prancha" casa "reboque tipo prancha".
 PREPOSICOES = ["de", "do", "da", "dos", "das", "d", "a", "em", "no", "na",
-               "nos", "nas", "sobre", "para", "p"]
+               "nos", "nas", "sobre", "para", "p", "tipo"]
 
 RE_CATEGORIA = re.compile(r"^=+\s*CATEGORIA\s*:\s*(.+?)\s*=*$", re.IGNORECASE)
 
@@ -98,27 +100,81 @@ def carregar_termos(caminho):
     return termos
 
 
+# O termo não conta quando vem logo depois de uma palavra de serviço, locação,
+# manutenção ou peças: "locação de caminhão pipa", "manutenção de roçadeiras",
+# "peças para implementos agrícolas", "Aplicação: Roçadeira" (peça no CATMAT).
+# Olha as JANELA palavras antes do termo, da mais próxima para a mais distante;
+# uma palavra de compra ("aquisição de roçadeiras") encerra a busca.
+NAO_E_COMPRA = {
+    "locacao", "locacoes", "aluguel", "servico", "servicos", "prestacao", "prestados",
+    "manutencao", "manutencoes", "reparo", "reparos", "conserto", "consertos", "revisao",
+    "peca", "pecas", "componente", "componentes", "acessorio", "acessorios",
+    "lubrificante", "lubrificantes", "graxa", "exposicao", "concessao",
+    "aplicacao",
+}
+COMPRA = {"aquisicao", "aquisicoes", "compra", "compras", "adquirir"}
+JANELA = 20
+
+
+def ocorrencia_de_compra(texto_normalizado, inicio):
+    """False se o termo que começa em `inicio` é objeto de serviço/peça, não de compra."""
+    for palavra in reversed(texto_normalizado[:inicio].split()[-JANELA:]):
+        if palavra in COMPRA:
+            return True
+        if palavra in NAO_E_COMPRA:
+            return False
+    return True
+
+
 def termos_encontrados(objeto, termos):
-    """Lista de (categoria, termo) cujo termo aparece no objeto."""
+    """Lista de (categoria, termo) cujo termo aparece no objeto como coisa comprada."""
     obj = normalizar(objeto)
-    return [(cat, termo) for cat, termo, rx in termos if rx.search(obj)]
+    return [(cat, termo) for cat, termo, rx in termos
+            if any(ocorrencia_de_compra(obj, m.start()) for m in rx.finditer(obj))]
 
 
 # --- Caminhão junto com o implemento -------------------------------------
-# "caminhão"/"veículo" no texto indica que o caminhão está sendo comprado,
+# "caminhão"/"veículo" no texto indica que o veículo está sendo comprado,
 # exceto quando aparece como destino do implemento: "caçamba PARA caminhão",
-# "instalado NO caminhão", "tomada de força DO caminhão", "chassi DE caminhão".
-RE_VEICULO = re.compile(r"\b(?:caminh(?:ao|oes)|veiculos?|cavalos? mecanicos?)\b")
-DESTINO = {"para", "p", "em", "no", "na", "nos", "nas", "sobre", "sob", "ao", "aos",
+# "instalado NO caminhão", "acoplável A caminhão", "chassi DE caminhão",
+# "compatível COM caminhão".
+RE_VEICULO = re.compile(r"\b(?:caminh(?:ao|oes)|veiculos?|cavalos? mecanicos?"
+                        r"|caminhonetes?|camionetes?|picapes?|pick ?ups?"
+                        r"|automove(?:l|is)|motocicletas?|onibus)\b")
+# Trator aparece em quase toda descrição de implemento agrícola ("potência
+# mínima trator 75 cv", "acionamento por trator", "farol tipo trator"), então só
+# conta como compra quando é o próprio objeto: no início do texto ("Trator
+# agrícola 4x4 ..."), depois de "aquisição de"/"fornecimento de", "e", "sendo".
+RE_TRATOR = re.compile(r"\btratore?s?\b")
+COMPRA_DE = {"aquisicao", "aquisicoes", "fornecimento", "compra"}
+ANTES_DE_TRATOR_COMPRADO = COMPRA_DE | {"", "e", "sendo", "novo", "novos", "micro"}
+# "a" antes de caminhão/veículo (masculinos) é sempre preposição
+DESTINO = {"para", "p", "em", "no", "na", "nos", "nas", "sobre", "sob", "a", "ao", "aos",
            "do", "da", "dos", "das", "ate"}
-ARTIGOS = {"o", "a", "os", "as", "um", "uma", "uns", "umas", "seu", "sua", "seus", "suas"}
-# "... de caminhão" só é destino depois destas palavras ("chassi de caminhão")
-ANTES_DE_DESTINO = {"chassi", "chassis", "modelo", "modelos", "marca", "marcas",
-                    "frota", "cabine", "carroceria"}
-# chassi fornecido junto: "com chassi", "chassi cabinado", "chassi 0 km"
+ARTIGOS = {"o", "os", "um", "uma", "uns", "umas", "seu", "sua", "seus", "suas"}
+# "... de caminhão" só é destino depois destas palavras ("chassi de caminhão",
+# "plataforma para transporte de veículos", "roçadeira de trator")
+ANTES_DE_DESTINO = {"chassi", "chassis", "sobrechassi", "modelo", "modelos", "marca", "marcas",
+                    "frota", "cabine", "carroceria", "cacamba", "tanque", "implemento",
+                    "implementos", "transporte", "remocao", "reboque", "guincho",
+                    "guinchamento", "resgate", "socorro", "recolhimento", "abastecimento",
+                    "lavagem", "rocadeira", "rocadeiras", "grade", "arado", "potencia"}
+# "... com caminhão" só é destino depois destas ("compatível com trator")
+ANTES_DE_COM = {"compativel", "compativeis", "compatibilidade", "adaptavel", "adaptaveis",
+                "acoplavel", "acoplaveis", "uso", "utilizacao", "engate"}
+# chassi do caminhão fornecido junto: "com chassi de caminhão", "chassi
+# cabinado", "chassi 0 km". "Carreta com chassi reforçado" é o chassi do
+# próprio implemento e não conta.
 RE_CHASSI_JUNTO = re.compile(
-    r"\b(?:com|incluindo|inclusive|mais|e) (?:o |um )?chassis?\b"
-    r"|\bchassis? (?:cabinad|com cabine|novo|0 ?km|zero)")
+    r"\b(?:com|incluindo|inclusive|mais) (?:o |um )?chassis? (?:de |do )?caminh"
+    r"|\bchassis? (?:de caminh(?:ao|oes) )?(?:cabinad|com cabine|novo|0 ?km|zero)")
+# o caminhão já é do órgão: "chassi de caminhão fornecido pela Administração
+# (Caminhão VW ...)", "caminhão pertencente ao Município", "de propriedade da Prefeitura"
+RE_VEICULO_DO_ORGAO = re.compile(
+    r"\b(?:fornecid|cedid|disponibilizad)[oa]s? pel[oa]s? "
+    r"(?:administracao|prefeitura|municipio|contratante|orgao|secretaria)"
+    r"|\bpertencentes? (?:a|ao) (?:administracao|prefeitura|municipio|contratante|orgao|secretaria)"
+    r"|\bde propriedade d[oa]s? (?:administracao|prefeitura|municipio|contratante|orgao|secretaria)")
 
 
 def inclui_caminhao(texto):
@@ -126,14 +182,33 @@ def inclui_caminhao(texto):
     t = normalizar(texto)
     if RE_CHASSI_JUNTO.search(t):
         return True
+    if RE_VEICULO_DO_ORGAO.search(t):
+        return False
+    fim_destino = None  # fim da última menção que era destino
     for m in RE_VEICULO.finditer(t):
+        # "para caminhonete/pickup": a segunda palavra herda o destino da primeira
+        if fim_destino is not None and m.start() == fim_destino + 1:
+            fim_destino = m.end()
+            continue
+        fim_destino = m.end()
         antes = [p for p in t[:m.start()].split() if p not in ARTIGOS]
         anterior = antes[-1] if antes else ""
+        antes_anterior = antes[-2] if len(antes) > 1 else ""
         if anterior in DESTINO:
             continue
-        if anterior == "de" and len(antes) > 1 and antes[-2] in ANTES_DE_DESTINO:
+        if anterior == "de" and antes_anterior in ANTES_DE_DESTINO:
+            continue
+        if anterior == "com" and antes_anterior in ANTES_DE_COM:
             continue
         return True
+    for m in RE_TRATOR.finditer(t):
+        antes = [p for p in t[:m.start()].split() if p not in ARTIGOS and not p.isdigit()]
+        anterior = antes[-1] if antes else ""
+        if anterior == "de":  # "aquisição de trator" sim, "potência de trator" não
+            if len(antes) > 1 and antes[-2] in COMPRA_DE:
+                return True
+        elif anterior in ANTES_DE_TRATOR_COMPRADO:
+            return True
     return False
 
 
@@ -151,7 +226,8 @@ def get_json(url, params, tentativas=4):
                 if resp.status == 204:  # sem conteúdo
                     return None
                 return json.loads(resp.read().decode("utf-8"))
-        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
+        except (urllib.error.URLError, http.client.HTTPException, ConnectionError,
+                TimeoutError, json.JSONDecodeError) as exc:
             if isinstance(exc, urllib.error.HTTPError) and exc.code < 500 and exc.code != 429:
                 corpo = exc.read().decode("utf-8", "replace")
                 raise ErroAPI(f"Erro {exc.code} da API em {url}: {corpo}") from exc
@@ -218,13 +294,17 @@ def avaliar_itens(compra, termos):
         aceita = not inclui_caminhao(compra.get("objetoCompra"))
         return aceita, [], "objeto (itens indisponíveis)"
     com_termo = [i for i in itens if termos_encontrados(i.get("descricao"), termos)]
-    implemento = [i for i in com_termo if not inclui_caminhao(i.get("descricao"))]
-    if implemento:
-        return True, implemento, "itens"
-    if not com_termo and not any(inclui_caminhao(i.get("descricao")) for i in itens):
-        # descrições dos itens não usam os termos, mas nenhum item é caminhão
-        return not inclui_caminhao(compra.get("objetoCompra")), [], "itens (sem termo)"
-    return False, [], "itens"
+    if com_termo:
+        implemento = [i for i in com_termo if not inclui_caminhao(i.get("descricao"))]
+        return bool(implemento), implemento, "itens"
+    # descrições dos itens não usam os termos (ex.: objeto "trator e implementos
+    # agrícolas", itens "Trator", "Grade aradora"): entram os itens de material
+    # que não são veículo; se todos forem (item único "Caminhão pipa 0 km"), descarta
+    materiais = [i for i in itens if i.get("materialOuServico") != "S"]
+    if not materiais:  # só itens de serviço no catálogo: decide pelo objeto
+        return not inclui_caminhao(compra.get("objetoCompra")), [], "objeto (itens de serviço)"
+    sem_veiculo = [i for i in materiais if not inclui_caminhao(i.get("descricao"))]
+    return bool(sem_veiculo), sem_veiculo, "itens (sem termo)"
 
 
 def parse_data(valor):
