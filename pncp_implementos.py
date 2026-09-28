@@ -253,9 +253,13 @@ def get_json(url, params, tentativas=7):
     raise ErroAPI(f"Não foi possível consultar {url}")
 
 
-def buscar_contratacoes(data_final, uf=None):
-    """Itera por todas as páginas de contratações com proposta aberta."""
-    pagina = 1
+def buscar_contratacoes(data_final, uf=None, paginas_falhas=None):
+    """Itera por todas as páginas de contratações com proposta aberta.
+
+    Se uma página (exceto a primeira) falhar mesmo depois das retentativas, ela é
+    pulada e anotada em `paginas_falhas`, para não perder o resto da consulta.
+    """
+    pagina, total_paginas = 1, 0
     while True:
         params = {
             "dataFinal": data_final.strftime("%Y%m%d"),
@@ -268,7 +272,14 @@ def buscar_contratacoes(data_final, uf=None):
         try:
             dados = get_json(API_URL, params) or {}
         except ErroAPI as exc:
-            raise SystemExit(str(exc)) from exc
+            if pagina == 1 or paginas_falhas is None:
+                raise SystemExit(str(exc)) from exc
+            print(f"  página {pagina}/{total_paginas} falhou e foi pulada", file=sys.stderr)
+            paginas_falhas.append(pagina)
+            if pagina >= total_paginas:
+                break
+            pagina += 1
+            continue
         total_paginas = dados.get("totalPaginas") or 0
         print(f"  página {pagina}/{total_paginas}", file=sys.stderr)
         yield from dados.get("data") or []
@@ -480,7 +491,8 @@ def main():
 
     print(f"Consultando pregões eletrônicos com proposta aberta até "
           f"{data_final:%d/%m/%Y}{' em ' + args.uf.upper() if args.uf else ''}...", file=sys.stderr)
-    itens = buscar_contratacoes(data_final, args.uf)
+    paginas_falhas = []
+    itens = buscar_contratacoes(data_final, args.uf, paginas_falhas)
     descartados = []
     resultados = list(filtrar(itens, termos, datetime.now(), args.incluir_caminhao, descartados))
     resultados.sort(key=lambda r: r["encerramento_proposta"] or "")
@@ -489,6 +501,9 @@ def main():
     if descartados:
         print(f"\n{len(descartados)} pregão(ões) descartado(s) por incluir o caminhão "
               f"(use --incluir-caminhao para vê-los).")
+    if paginas_falhas:
+        print(f"\nATENÇÃO: a API falhou nas páginas {', '.join(map(str, paginas_falhas))} "
+              f"({TAMANHO_PAGINA} pregões cada), que ficaram de fora. Rode de novo mais tarde.")
     if args.csv:
         salvar_csv(resultados, args.csv)
 
