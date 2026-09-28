@@ -7,6 +7,8 @@
 #
 # A busca ignora acentos, maiúsculas, plural, hífen e apóstrofo, e aceita
 # preposição entre as palavras ("tanque de água" também acha "tanque para água").
+# Implementos agrícolas (roçadeira, carreta agrícola, grade, plantadeira...) ficam
+# de fora: não são fabricados.
 # Evite termos soltos e genéricos ("tanque", "plataforma", "caçamba",
 # "basculante", "prancha", "coletor de lixo"): trazem portão basculante,
 # prancha de madeira, lixeira etc.
@@ -135,61 +137,7 @@ unidade de abastecimento
 === CATEGORIA: IMPLEMENTOS EM GERAL ===
 implemento rodoviário
 implementos rodoviários
-implemento agrícola
-implementos agrícolas
-carreta agrícola
-carretinha agrícola
 semirreboque
 semi reboque
 tanque vácuo
 tanque de vácuo
-roçadeira hidráulica
-roçadeira agrícola
-roçadeira tratorizada
-roçadeira articulada
-roçadeira de arrasto
-roçadeira para trator
-terraceador
-
-=== CATEGORIA: IMPLEMENTOS AGRÍCOLAS ===
-# implementos de trator, geralmente listados só nos itens do pregão
-grade aradora
-grade niveladora
-arado
-subsolador
-escarificador
-plantadeira
-semeadora
-semeadeira
-pulverizador agrícola
-pulverizador de barras
-pulverizador tratorizado
-pulverizador canhão
-distribuidor de calcário
-distribuidor de adubo
-distribuidor de fertilizante
-espalhador de calcário
-calcareadeira
-adubadeira
-ensiladeira
-colhedora de forragem
-colhedeira de forragem
-enxada rotativa
-plaina agrícola
-plaina niveladora
-plaina traseira
-lâmina traseira
-rolo faca
-sulcador
-encanteirador
-encanteiradeira
-carreta forrageira
-carreta graneleira
-vagão forrageiro
-tanque de chorume
-distribuidor de dejetos
-concha traseira
-guincho bag
-valetadeira
-batedeira de cereais
-trilhadeira

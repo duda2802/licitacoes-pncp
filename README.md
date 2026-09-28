@@ -3,11 +3,12 @@
 Script `pncp_implementos.py`: consulta a API pública do PNCP
 (`/api/consulta/v1/contratacoes/proposta`) e lista **pregões, concorrências e
 dispensas** com **propostas abertas** cujo objeto contenha algum termo do arquivo `termos.txt` (implementos
-rodoviários da Brazil Implementos e implementos agrícolas).
+rodoviários da Brazil Implementos). Implementos agrícolas (roçadeira, carreta
+agrícola, grade, plantadeira...) ficam de fora: não são fabricados.
 
 Objetos genéricos ("aquisição de máquinas e equipamentos", "patrulha mecanizada",
 "equipamentos agrícolas") também são conferidos: o script abre os itens e o
-pregão entra se algum item usar um termo ("Grade aradora 16 discos"). Os padrões
+pregão entra se algum item usar um termo ("Tanque pipa 8.000 L"). Os padrões
 que disparam essa conferência estão em `RE_GATILHO` no script.
 
 Para cada contratação mostra: **categoria**, modalidade, órgão, município/UF, valor estimado,
@@ -23,16 +24,17 @@ item** (API `/api/pncp/v1/orgaos/{cnpj}/compras/{ano}/{seq}/itens`): se houver
 ao menos um item que seja só o implemento, o pregão entra e esses itens aparecem
 no resultado, com o valor deles.
 
-O mesmo vale para caminhonete/picape e trator ("trator agrícola **e** roçadeira"
-em um único item é compra do trator).
+O mesmo vale para caminhonete/picape e trator ("trator **com** tanque pipa" em um
+único item é compra do trator).
 
 "Caminhão" como destino do implemento não descarta: "caçamba **para** caminhão",
 "instalado **no** caminhão", "acoplável **a** trator", "chassi **de** caminhão",
 "sobrechassi de caminhão", "compatível **com** caminhão", "transporte **de** veículos",
 e "caminhão fornecido pela Administração / pertencente ao Município".
 
-Se nenhum item usa os termos (objeto "trator e implementos agrícolas", itens
-"Trator", "Grade aradora"), entram os itens que não são veículo.
+Se nenhum item usa os termos (objeto "caminhão pipa e kit de combate a incêndio",
+itens "Caminhão hidrojato", "Kit de combate para caminhonete"), entram os itens que
+não são veículo.
 
 ## Serviço, locação, manutenção e peças não contam
 
@@ -78,7 +80,7 @@ Requer Python 3.8+ e nenhuma dependência externa.
 python pncp_implementos.py                      # propostas que encerram nos próximos 60 dias, Brasil todo
 python pncp_implementos.py --uf GO --dias 30    # só GO, próximos 30 dias
 python pncp_implementos.py --csv resultado.csv  # também salva CSV (abre no Excel)
-python pncp_implementos.py --termo "grade aradora"   # termo extra, só nesta execução
+python pncp_implementos.py --termo "carroceria graneleira"   # termo extra, só nesta execução
 python pncp_implementos.py --termos outro.txt   # usa outro arquivo de termos
 python pncp_implementos.py --incluir-caminhao   # não descarta caminhão + implemento
 python pncp_implementos.py --modalidades 6      # só pregão eletrônico (padrão: 6,7,4,5,8)
