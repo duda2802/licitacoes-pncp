@@ -35,7 +35,10 @@ from pathlib import Path
 
 API_URL = "https://pncp.gov.br/api/consulta/v1/contratacoes/proposta"
 API_ITENS = "https://pncp.gov.br/api/pncp/v1/orgaos/{cnpj}/compras/{ano}/{seq}/itens"
-MODALIDADE_PREGAO_ELETRONICO = 6
+# Modalidades consultadas (código PNCP): pregão e concorrência, eletrônicos e presenciais.
+MODALIDADES = {6: "Pregão eletrônico", 7: "Pregão presencial", 4: "Concorrência eletrônica",
+               5: "Concorrência presencial", 8: "Dispensa"}
+MODALIDADES_PADRAO = "6,7,4,5"
 TAMANHO_PAGINA = 50  # máximo aceito pela API
 
 # Arquivo com os termos procurados no objeto, agrupados por categoria.
@@ -110,30 +113,64 @@ NAO_E_COMPRA = {
     "manutencao", "manutencoes", "reparo", "reparos", "conserto", "consertos", "revisao",
     "peca", "pecas", "componente", "componentes", "acessorio", "acessorios",
     "lubrificante", "lubrificantes", "graxa", "exposicao", "concessao",
-    "aplicacao",
+    "aplicacao", "pneu", "pneus", "camara", "camaras", "combustivel", "combustiveis",
+    "oleo", "oleos", "filtro", "filtros", "bateria", "baterias",
 }
 COMPRA = {"aquisicao", "aquisicoes", "compra", "compras", "adquirir"}
 JANELA = 20
 
 
-# Termo que é o próprio caminhão ("caminhão pipa") depois de "para"/"no"/"em" é
-# destino de outra coisa: "mangueiras PARA caminhão-pipa", "pneus NO caminhão".
+# Termo que é o próprio caminhão ("caminhão pipa") ou genérico ("implementos
+# rodoviários") depois de "para"/"no"/"dos" é destino de outra coisa:
+# "mangueiras PARA caminhão-pipa", "chave de roda PARA implementos rodoviários".
 ANTES_DE_CAMINHAO_DESTINO = {"para", "p", "em", "no", "na", "nos", "nas", "sobre",
                              "a", "ao", "aos"}
+ANTES_DE_GENERICO_DESTINO = ANTES_DE_CAMINHAO_DESTINO | {"dos", "das", "do", "da"}
+RE_TERMO_GENERICO = re.compile(r"implementos?\b")
 
 
 def ocorrencia_de_compra(texto_normalizado, inicio):
     """False se o termo que começa em `inicio` é objeto de serviço/peça, não de compra."""
     antes = texto_normalizado[:inicio].split()
-    if (antes and antes[-1] in ANTES_DE_CAMINHAO_DESTINO
-            and RE_VEICULO.match(texto_normalizado, inicio)):
+    if antes and antes[-1] in ANTES_DE_CAMINHAO_DESTINO and RE_VEICULO.match(texto_normalizado, inicio):
         return False
-    for palavra in reversed(antes[-JANELA:]):
+    if RE_TERMO_GENERICO.match(texto_normalizado, inicio) and antes and (
+            antes[-1] in ANTES_DE_GENERICO_DESTINO
+            or ({"para", "p"} & set(antes[-3:]) and not COMPRA & set(antes[-3:]))):
+        return False  # "... para caminhões e implementos rodoviários"
+    janela = antes[-JANELA:]
+    for k in range(len(janela) - 1, -1, -1):
+        palavra = janela[k]
         if palavra in COMPRA:
             return True
         if palavra in NAO_E_COMPRA:
+            # "trator de pneus" é tipo de trator, não compra de pneus
+            if palavra == "pneus" and k >= 2 and janela[k - 1] == "de" and janela[k - 2] in (
+                    "trator", "tratores", "agricola", "carregadeira", "retroescavadeira"):
+                continue
+            return False
+        # "horas/máquinas", "locação por hora" é serviço; "zero horas" é máquina nova
+        if palavra in ("hora", "horas") and (k == 0 or janela[k - 1] != "zero"):
             return False
     return True
+
+
+# Objeto genérico ("aquisição de máquinas e equipamentos", "patrulha mecanizada",
+# "equipamentos agrícolas"): o implemento costuma aparecer só nos itens. Nesses
+# pregões os itens são conferidos, e o pregão entra se algum item usar um termo.
+RE_GATILHO = re.compile(
+    r"\b(?:maquinas?|maquinarios?|patrulhas? (?:mecanizad|agricol)|mecanizacao"
+    r"|equipamentos? (?:agricola|rodoviari|pesad|para (?:a )?agricultura|urbanos)"
+    r"|implementos?|agricultura familiar|veiculos? e equipamentos"
+    r"|equipamentos? e veiculos)\w*")
+RE_COMPRA_OBJETO = re.compile(r"\b(?:aquisic|compra|fornecimento|registro de preco)")
+
+
+def objeto_generico(objeto):
+    """True se o objeto é compra genérica de máquinas/equipamentos (ver RE_GATILHO)."""
+    obj = normalizar(objeto)
+    return bool(RE_COMPRA_OBJETO.search(obj)) and any(
+        ocorrencia_de_compra(obj, m.start()) for m in RE_GATILHO.finditer(obj))
 
 
 def termos_encontrados(objeto, termos):
@@ -150,12 +187,12 @@ def termos_encontrados(objeto, termos):
 # "compatível COM caminhão".
 RE_VEICULO = re.compile(r"\b(?:caminh(?:ao|oes)|veiculos?|cavalos? mecanicos?"
                         r"|caminhonetes?|camionetes?|picapes?|pick ?ups?"
-                        r"|automove(?:l|is)|motocicletas?|onibus)\b")
+                        r"|automove(?:l|is)|motocicletas?|onibus|aeronaves?|drones?)\b")
 # Trator aparece em quase toda descrição de implemento agrícola ("potência
 # mínima trator 75 cv", "acionamento por trator", "farol tipo trator"), então só
 # conta como compra quando é o próprio objeto: no início do texto ("Trator
 # agrícola 4x4 ..."), depois de "aquisição de"/"fornecimento de", "e", "sendo".
-RE_TRATOR = re.compile(r"\btratore?s?\b")
+RE_TRATOR = re.compile(r"\b(?:micro ?)?tratore?s?\b|\bmotocultivador(?:es)?\b")
 COMPRA_DE = {"aquisicao", "aquisicoes", "fornecimento", "compra"}
 ANTES_DE_TRATOR_COMPRADO = COMPRA_DE | {"", "e", "sendo", "novo", "novos", "micro"}
 # "a" antes de caminhão/veículo (masculinos) é sempre preposição
@@ -253,7 +290,7 @@ def get_json(url, params, tentativas=7):
     raise ErroAPI(f"Não foi possível consultar {url}")
 
 
-def buscar_contratacoes(data_final, uf=None, paginas_falhas=None):
+def buscar_contratacoes(data_final, uf=None, paginas_falhas=None, modalidade=6):
     """Itera por todas as páginas de contratações com proposta aberta.
 
     Se uma página (exceto a primeira) falhar mesmo depois das retentativas, ela é
@@ -263,7 +300,7 @@ def buscar_contratacoes(data_final, uf=None, paginas_falhas=None):
     while True:
         params = {
             "dataFinal": data_final.strftime("%Y%m%d"),
-            "codigoModalidadeContratacao": MODALIDADE_PREGAO_ELETRONICO,
+            "codigoModalidadeContratacao": modalidade,
             "pagina": pagina,
             "tamanhoPagina": TAMANHO_PAGINA,
         }
@@ -275,7 +312,7 @@ def buscar_contratacoes(data_final, uf=None, paginas_falhas=None):
             if pagina == 1 or paginas_falhas is None:
                 raise SystemExit(str(exc)) from exc
             print(f"  página {pagina}/{total_paginas} falhou e foi pulada", file=sys.stderr)
-            paginas_falhas.append(pagina)
+            paginas_falhas.append(f"{MODALIDADES.get(modalidade, modalidade)} p.{pagina}")
             if pagina >= total_paginas:
                 break
             pagina += 1
@@ -320,12 +357,17 @@ def item_de_servico(item):
     return any(p in NAO_E_COMPRA for p in palavras[:3])
 
 
-def avaliar_itens(compra, termos):
+def avaliar_itens(compra, termos, so_com_termo=False):
     """Decide se o pregão tem implemento sem caminhão.
 
-    Retorna (aceita, itens_de_interesse, verificacao).
+    Retorna (aceita, itens_de_interesse, verificacao). Com `so_com_termo` (objeto
+    genérico) só valem itens que usam algum termo.
     """
     itens = buscar_itens(compra)
+    if so_com_termo:
+        com_termo = [i for i in itens or [] if termos_encontrados(i.get("descricao"), termos)]
+        implemento = [i for i in com_termo if not inclui_caminhao(i.get("descricao"))]
+        return bool(implemento), implemento or com_termo, "itens (objeto genérico)"
     if not itens:  # sem itens: decide só pelo objeto
         aceita = not inclui_caminhao(compra.get("objetoCompra"))
         return aceita, [], "objeto (itens indisponíveis)"
@@ -385,6 +427,7 @@ def montar_resultado(item, encontrados, itens_implemento=(), verificacao=""):
         "categoria": " | ".join(categorias),
         "orgao": orgao.get("razaoSocial", ""),
         "unidade": unidade.get("nomeUnidade", ""),
+        "modalidade": item.get("modalidadeNome", ""),
         "municipio": unidade.get("municipioNome", ""),
         "uf": unidade.get("ufSigla", ""),
         "valor_estimado": item.get("valorTotalEstimado"),
@@ -414,6 +457,17 @@ def filtrar(itens, termos, agora, incluir_caminhao=False, descartados=None):
             continue
         encontrados = termos_encontrados(item.get("objetoCompra"), termos)
         if not encontrados:
+            if not objeto_generico(item.get("objetoCompra")):
+                continue
+            aceita, itens_impl, verificacao = avaliar_itens(item, termos, so_com_termo=True)
+            if not itens_impl:  # nenhum item usa os termos
+                continue
+            encontrados = list(dict.fromkeys(
+                t for i in itens_impl for t in termos_encontrados(i.get("descricao"), termos)))
+            if aceita or incluir_caminhao:
+                yield montar_resultado(item, encontrados, itens_impl, verificacao)
+            elif descartados is not None:
+                descartados.append(item)
             continue
         if incluir_caminhao:
             yield montar_resultado(item, encontrados, verificacao="desligada")
@@ -434,6 +488,7 @@ def imprimir(resultados):
         fim_txt = fim.strftime("%d/%m/%Y %H:%M") if fim else r["encerramento_proposta"]
         print(f"\n[{i}] {r['orgao']}")
         print(f"    Categoria:   {r['categoria']}")
+        print(f"    Modalidade:  {r['modalidade']}")
         if r["unidade"]:
             print(f"    Unidade:     {r['unidade']}")
         print(f"    Local:       {r['municipio']}/{r['uf']}")
@@ -475,6 +530,9 @@ def main():
     ap.add_argument("--dias", type=int, default=60,
                     help="considera propostas que encerram até N dias a partir de hoje (padrão: 60)")
     ap.add_argument("--uf", help="filtra por UF (ex.: SP)")
+    ap.add_argument("--modalidades", default=MODALIDADES_PADRAO,
+                    help="códigos PNCP separados por vírgula (padrão: 6,7,4,5 = pregão e "
+                         "concorrência, eletrônicos e presenciais; 8 = dispensa)")
     ap.add_argument("--termos", default=str(ARQUIVO_TERMOS),
                     help="arquivo de termos por categoria (padrão: termos.txt ao lado do script)")
     ap.add_argument("--termo", action="append", default=[],
@@ -489,10 +547,17 @@ def main():
     print(f"{len(termos)} termos carregados de {args.termos}", file=sys.stderr)
     data_final = date.today() + timedelta(days=args.dias)
 
-    print(f"Consultando pregões eletrônicos com proposta aberta até "
-          f"{data_final:%d/%m/%Y}{' em ' + args.uf.upper() if args.uf else ''}...", file=sys.stderr)
+    modalidades = [int(m) for m in args.modalidades.split(",") if m.strip()]
     paginas_falhas = []
-    itens = buscar_contratacoes(data_final, args.uf, paginas_falhas)
+
+    def todas_as_modalidades():
+        for mod in modalidades:
+            print(f"Consultando {MODALIDADES.get(mod, mod)} com proposta aberta até "
+                  f"{data_final:%d/%m/%Y}{' em ' + args.uf.upper() if args.uf else ''}...",
+                  file=sys.stderr)
+            yield from buscar_contratacoes(data_final, args.uf, paginas_falhas, mod)
+
+    itens = todas_as_modalidades()
     descartados = []
     resultados = list(filtrar(itens, termos, datetime.now(), args.incluir_caminhao, descartados))
     resultados.sort(key=lambda r: r["encerramento_proposta"] or "")
@@ -502,7 +567,7 @@ def main():
         print(f"\n{len(descartados)} pregão(ões) descartado(s) por incluir o caminhão "
               f"(use --incluir-caminhao para vê-los).")
     if paginas_falhas:
-        print(f"\nATENÇÃO: a API falhou nas páginas {', '.join(map(str, paginas_falhas))} "
+        print(f"\nATENÇÃO: a API falhou nas páginas {', '.join(paginas_falhas)} "
               f"({TAMANHO_PAGINA} pregões cada), que ficaram de fora. Rode de novo mais tarde.")
     if args.csv:
         salvar_csv(resultados, args.csv)

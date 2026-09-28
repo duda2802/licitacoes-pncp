@@ -1,11 +1,17 @@
 # licitacoes-pncp
 
 Script `pncp_implementos.py`: consulta a API pública do PNCP
-(`/api/consulta/v1/contratacoes/proposta`) e lista **pregões eletrônicos**
-(`codigoModalidadeContratacao=6`) com **propostas abertas** cujo objeto contenha
-algum termo do arquivo `termos.txt` (implementos rodoviários da Brazil Implementos).
+(`/api/consulta/v1/contratacoes/proposta`) e lista **pregões e concorrências**
+(eletrônicos e presenciais; dispensa com `--modalidades 6,7,4,5,8`) com **propostas
+abertas** cujo objeto contenha algum termo do arquivo `termos.txt` (implementos
+rodoviários da Brazil Implementos e implementos agrícolas).
 
-Para cada contratação mostra: **categoria**, órgão, município/UF, valor estimado,
+Objetos genéricos ("aquisição de máquinas e equipamentos", "patrulha mecanizada",
+"equipamentos agrícolas") também são conferidos: o script abre os itens e o
+pregão entra se algum item usar um termo ("Grade aradora 16 discos"). Os padrões
+que disparam essa conferência estão em `RE_GATILHO` no script.
+
+Para cada contratação mostra: **categoria**, modalidade, órgão, município/UF, valor estimado,
 data de encerramento da proposta, termos encontrados e link do edital no PNCP
 (mais o link do sistema de origem).
 
@@ -76,7 +82,11 @@ python pncp_implementos.py --csv resultado.csv  # também salva CSV (abre no Exc
 python pncp_implementos.py --termo "grade aradora"   # termo extra, só nesta execução
 python pncp_implementos.py --termos outro.txt   # usa outro arquivo de termos
 python pncp_implementos.py --incluir-caminhao   # não descarta caminhão + implemento
+python pncp_implementos.py --modalidades 6      # só pregão eletrônico (padrão: 6,7,4,5)
 ```
+
+Modalidades (código PNCP): 6 pregão eletrônico, 7 pregão presencial,
+4 concorrência eletrônica, 5 concorrência presencial, 8 dispensa.
 
 Cada pregão encontrado gera uma consulta extra (itens), então a execução fica
 um pouco mais lenta. Sem `--uf` o script percorre todas as páginas do Brasil inteiro (50 por página),

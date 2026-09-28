@@ -51,6 +51,8 @@ compactador de lixo
 caminhão de lixo
 caminhão coletor
 caixa compactadora
+limpa fossa
+equipamento de hidrojato
 compactador de resíduos
 equipamento compactador
 basculador de contêiner
@@ -65,7 +67,6 @@ semirreboque basculante
 reboque basculante
 rodotrem basculante
 caçamba meia cana
-meia cana
 caçamba graneleira
 caçamba roll on
 roll on roll off
@@ -107,6 +108,11 @@ caminhão com cesto aéreo
 carroceria com cesto aéreo
 carroceria carga seca
 carroceria de carga
+carroceria baú
+baú frigorífico
+baú isotérmico
+baú de carga
+baú carga seca
 carroceria de madeira
 carroceria metálica
 carroceria sobre chassi
@@ -144,3 +150,46 @@ roçadeira articulada
 roçadeira de arrasto
 roçadeira para trator
 terraceador
+
+=== CATEGORIA: IMPLEMENTOS AGRÍCOLAS ===
+# implementos de trator, geralmente listados só nos itens do pregão
+grade aradora
+grade niveladora
+arado
+subsolador
+escarificador
+plantadeira
+semeadora
+semeadeira
+pulverizador agrícola
+pulverizador de barras
+pulverizador tratorizado
+pulverizador canhão
+distribuidor de calcário
+distribuidor de adubo
+distribuidor de fertilizante
+espalhador de calcário
+calcareadeira
+adubadeira
+ensiladeira
+colhedora de forragem
+colhedeira de forragem
+enxada rotativa
+plaina agrícola
+plaina niveladora
+plaina traseira
+lâmina traseira
+rolo faca
+sulcador
+encanteirador
+encanteiradeira
+carreta forrageira
+carreta graneleira
+vagão forrageiro
+tanque de chorume
+distribuidor de dejetos
+concha traseira
+guincho bag
+valetadeira
+batedeira de cereais
+trilhadeira
