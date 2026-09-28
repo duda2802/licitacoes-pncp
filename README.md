@@ -4,7 +4,11 @@ Script `pncp_implementos.py`: consulta a API pública do PNCP
 (`/api/consulta/v1/contratacoes/proposta`) e lista **pregões, concorrências e
 dispensas** com **propostas abertas** cujo objeto contenha algum termo do arquivo `termos.txt` (implementos
 rodoviários da Brazil Implementos). Implementos agrícolas (roçadeira, carreta
-agrícola, grade, plantadeira...) ficam de fora: não são fabricados.
+agrícola, grade, plantadeira, rolo faca, distribuidor de adubo...) ficam de fora:
+não são fabricados. Além de não estarem nos termos, um item que fala em agrícola/
+tratorizado, ou uma "carreta ..." num objeto agrícola, não conta mesmo que use um
+termo ("carreta agrícola ... caçamba basculante", "tanque pipa agrícola com
+reboque"). Ver `RE_AGRICOLA` no script.
 
 Objetos genéricos ("aquisição de máquinas e equipamentos", "patrulha mecanizada",
 "equipamentos agrícolas") também são conferidos: o script abre os itens e o

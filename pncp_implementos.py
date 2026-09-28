@@ -115,7 +115,7 @@ NAO_E_COMPRA = {
     "lubrificante", "lubrificantes", "graxa", "exposicao", "concessao",
     "aplicacao", "pneu", "pneus", "camara", "camaras", "combustivel", "combustiveis",
     "oleo", "oleos", "filtro", "filtros", "bateria", "baterias",
-    "placa", "placas", "emplacamento", "licenciamento",
+    "placa", "placas", "emplacamento", "licenciamento", "fretamento", "frete",
 }
 COMPRA = {"aquisicao", "aquisicoes", "compra", "compras", "adquirir"}
 JANELA = 20
@@ -358,31 +358,73 @@ def item_de_servico(item):
     return any(p in NAO_E_COMPRA for p in palavras[:3])
 
 
+# Implemento agrícola não interessa (não é fabricado): carreta agrícola, tanque
+# pipa agrícola com reboque, recolhedora de café etc. Esses itens não contam
+# mesmo que a descrição use um termo ("carreta agrícola ... caçamba basculante").
+RE_AGRICOLA = re.compile(r"\b(?:agricol|tratorizad|tratorad|recolhedor|colhedo|colhedeira"
+                         r"|ensiladeira|forrage|carretinha)\w*")
+RE_OBJETO_AGRICOLA = re.compile(r"\b(?:agricol|agropecuari|patrulha|forrage|lavoura)\w*")
+# no objeto genérico o termo tem de estar no começo do item: "Tanque pipa 8.000 L",
+# não "Cortador de piso ... com tanque de água"
+PALAVRAS_INICIO_ITEM = 15
+
+
+def item_agricola(item, objeto):
+    """Item que é implemento agrícola: fala em agrícola/tratorizado, ou é uma
+    "carreta ..." num objeto agrícola ("carretas agrícolas e reboque prancha")."""
+    desc = normalizar(item.get("descricao"))
+    if RE_AGRICOLA.search(desc):
+        return True
+    return desc.startswith(("carreta ", "carretas ")) and bool(
+        RE_OBJETO_AGRICOLA.search(normalizar(objeto)))
+
+
+def termo_no_inicio(texto, termos):
+    """True se algum termo aparece (como compra) nas primeiras palavras do texto."""
+    t = normalizar(texto)
+    limite = len(" ".join(t.split()[:PALAVRAS_INICIO_ITEM]))
+    return any(m.start() < limite and ocorrencia_de_compra(t, m.start())
+               for _, _, rx in termos for m in rx.finditer(t))
+
+
 def avaliar_itens(compra, termos, so_com_termo=False):
     """Decide se o pregão tem implemento sem caminhão.
 
     Retorna (aceita, itens_de_interesse, verificacao). Com `so_com_termo` (objeto
-    genérico) só valem itens que usam algum termo.
+    genérico) só valem itens que começam com algum termo. verificacao "agrícola"
+    quer dizer que os itens com termo são todos implemento agrícola.
     """
+    objeto = compra.get("objetoCompra")
     itens = buscar_itens(compra)
     if so_com_termo:
-        com_termo = [i for i in itens or [] if termos_encontrados(i.get("descricao"), termos)]
-        implemento = [i for i in com_termo if not inclui_caminhao(i.get("descricao"))]
-        return bool(implemento), implemento or com_termo, "itens (objeto genérico)"
+        com_termo = [i for i in itens or [] if termo_no_inicio(i.get("descricao"), termos)]
+        nao_agricola = [i for i in com_termo if not item_agricola(i, objeto)]
+        if com_termo and not nao_agricola:
+            return False, [], "agrícola"
+        implemento = [i for i in nao_agricola if not inclui_caminhao(i.get("descricao"))]
+        return bool(implemento), implemento or nao_agricola, "itens (objeto genérico)"
     if not itens:  # sem itens: decide só pelo objeto
-        aceita = not inclui_caminhao(compra.get("objetoCompra"))
+        if item_agricola({"descricao": objeto}, objeto):
+            return False, [], "agrícola"
+        aceita = not inclui_caminhao(objeto)
         return aceita, [], "objeto (itens indisponíveis)"
     com_termo = [i for i in itens if termos_encontrados(i.get("descricao"), termos)]
     if com_termo:
-        implemento = [i for i in com_termo if not inclui_caminhao(i.get("descricao"))]
+        nao_agricola = [i for i in com_termo if not item_agricola(i, objeto)]
+        if not nao_agricola:
+            return False, [], "agrícola"
+        implemento = [i for i in nao_agricola if not inclui_caminhao(i.get("descricao"))]
         return bool(implemento), implemento, "itens"
-    # descrições dos itens não usam os termos (ex.: objeto "trator e implementos
-    # agrícolas", itens "Trator", "Grade aradora"): entram os itens de material
-    # que não são veículo; se todos forem (item único "Caminhão pipa 0 km"), descarta
+    # descrições dos itens não usam os termos (ex.: objeto "caminhão pipa e kit de
+    # combate", itens "Caminhão hidrojato", "Kit de combate para caminhonete"): entram
+    # os itens de material que não são veículo nem agrícolas
     materiais = [i for i in itens if not item_de_servico(i)]
     if not materiais:  # só itens de serviço no catálogo: decide pelo objeto
-        return not inclui_caminhao(compra.get("objetoCompra")), [], "objeto (itens de serviço)"
-    sem_veiculo = [i for i in materiais if not inclui_caminhao(i.get("descricao"))]
+        return not inclui_caminhao(objeto), [], "objeto (itens de serviço)"
+    uteis = [i for i in materiais if not item_agricola(i, objeto)]
+    if not uteis:
+        return False, [], "agrícola"
+    sem_veiculo = [i for i in uteis if not inclui_caminhao(i.get("descricao"))]
     return bool(sem_veiculo), sem_veiculo, "itens (sem termo)"
 
 
@@ -461,7 +503,7 @@ def filtrar(itens, termos, agora, incluir_caminhao=False, descartados=None):
             if not objeto_generico(item.get("objetoCompra")):
                 continue
             aceita, itens_impl, verificacao = avaliar_itens(item, termos, so_com_termo=True)
-            if not itens_impl:  # nenhum item usa os termos
+            if not itens_impl:  # nenhum item usa os termos, ou só itens agrícolas
                 continue
             encontrados = list(dict.fromkeys(
                 t for i in itens_impl for t in termos_encontrados(i.get("descricao"), termos)))
@@ -476,7 +518,7 @@ def filtrar(itens, termos, agora, incluir_caminhao=False, descartados=None):
         aceita, itens_impl, verificacao = avaliar_itens(item, termos)
         if aceita:
             yield montar_resultado(item, encontrados, itens_impl, verificacao)
-        elif descartados is not None:
+        elif verificacao != "agrícola" and descartados is not None:
             descartados.append(item)
 
 
