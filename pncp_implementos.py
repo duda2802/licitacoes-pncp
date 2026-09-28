@@ -43,6 +43,8 @@ TAMANHO_PAGINA = 50  # máximo aceito pela API
 
 # Arquivo com os termos procurados no objeto, agrupados por categoria.
 ARQUIVO_TERMOS = Path(__file__).with_name("termos.txt")
+# Termos de obras / estruturas (galpão, terraplenagem, pavimentação...), com abas próprias.
+ARQUIVO_TERMOS_OBRAS = Path(__file__).with_name("termos_obras.txt")
 CATEGORIA_EXTRA = "TERMO EXTRA"
 
 # Entre as palavras de um termo aceita-se uma destas preposições (ou nenhuma):
@@ -179,6 +181,75 @@ def termos_encontrados(objeto, termos):
     obj = normalizar(objeto)
     return [(cat, termo) for cat, termo, rx in termos
             if any(ocorrencia_de_compra(obj, m.start()) for m in rx.finditer(obj))]
+
+
+# --- Obras / estruturas ----------------------------------------------------
+# Aqui serviço conta (obra é serviço de engenharia) e não há regra de caminhão.
+# Termo marcado com "~" em termos_obras.txt é genérico ("escola", "execução",
+# "reforma", "cobertura"): só conta se o objeto também for de obra/engenharia.
+RE_CONTEXTO_OBRA = re.compile(
+    r"\b(?:(?<!mao de )obras?|engenharia|empreitada|pavimenta\w*|terraplen\w*|terraplan\w*"
+    r"|alvenaria|galpa\w*|edificac\w*|projeto executivo|construcao (?:d[aeo]s?|e)"
+    r"|reforma (?:d[aeo]s?|e|geral|predial|com)|servicos? de (?:reforma|construcao|ampliacao)"
+    r"|ampliacao e reforma|estruturas? metalicas?|cobertura metalica)\b")
+
+
+# Compra de material ("aquisição de tampões para rede de esgoto", "materiais
+# hidráulicos para obras") não é obra: aí só valem os termos específicos da primeira
+# categoria de termos_obras.txt (galpão, estrutura metálica, telhas termoacústicas...).
+RE_AQUISICAO = re.compile(r"\b(?:aquisic\w*|compras?|fornecimento parcelado)\b")
+RE_SERVICO_OBRA = re.compile(
+    r"\b(?:execuc\w*|servicos?|(?<!mao de )obras?|empreitada|instalac\w*|montagem"
+    r"|construc\w* d[aeo]s?|reforma d[aeo]s?|implantac\w*)\b")
+# reforma/manutenção de coisas que não são edificação: aí os termos genéricos não contam
+RE_NAO_E_EDIFICACAO = re.compile(
+    r"\b(?:reforma\w*|recuperac\w*|manutenc\w*(?: preventiva e corretiva)?|conserto\w*)"
+    r" (?:d[aeo]s? |em )?(?:pneu|estofad|moveis|mobiliario|cadeira|veicul|frota|bateria|motor"
+    r"|equipamento|maquina|aparelho|ar condicionado|elevador|computador|impressora)\w*")
+# locação de estrutura para evento, aluguel de galpão: não é obra
+NAO_E_OBRA = {"locacao", "locacoes", "aluguel", "alugueis"}
+
+
+def compra_de_material(objeto_normalizado):
+    return bool(RE_AQUISICAO.search(objeto_normalizado)) and not RE_SERVICO_OBRA.search(
+        objeto_normalizado)
+
+
+def carregar_termos_obras(caminho):
+    """Lê termos_obras.txt -> lista de (categoria, termo, regex, generico)."""
+    termos, vistos = [], set()
+    categoria = "SEM CATEGORIA"
+    with open(caminho, encoding="utf-8") as f:
+        for linha in f:
+            linha = linha.strip()
+            if not linha or linha.startswith("#"):
+                continue
+            m = RE_CATEGORIA.match(linha)
+            if m:
+                categoria = m.group(1)
+                continue
+            generico = linha.startswith("~")
+            linha = linha.lstrip("~").strip()
+            chave = (categoria, normalizar(linha))
+            if chave not in vistos:  # "galpão" == "galpao"
+                vistos.add(chave)
+                termos.append((categoria, linha, termo_para_regex(linha), generico))
+    return termos
+
+
+def obras_encontradas(objeto, termos_obras):
+    """Lista de (categoria, termo) de obras no objeto; genéricos só com contexto de obra."""
+    obj = normalizar(objeto)
+    contexto = bool(RE_CONTEXTO_OBRA.search(obj)) and not RE_NAO_E_EDIFICACAO.search(obj)
+    material = compra_de_material(obj)
+    primeira = termos_obras[0][0] if termos_obras else None
+
+    def vale(m):  # "locação de estrutura metálica" não conta
+        return not NAO_E_OBRA & set(obj[:m.start()].split()[-6:])
+
+    return [(cat, termo) for cat, termo, rx, generico in termos_obras
+            if (contexto or not generico) and not (material and (generico or cat != primeira))
+            and any(vale(m) for m in rx.finditer(obj))]
 
 
 # --- Caminhão junto com o implemento -------------------------------------
@@ -592,6 +663,112 @@ def imprimir(resultados):
         print(f"  {n:4d}  {cat}")
 
 
+def filtrar_obras(contratacoes, termos_obras, agora):
+    """Contratações de obra/estrutura (termos_obras.txt), cada uma com sua aba."""
+    vistos = set()
+    categorias = list(dict.fromkeys(cat for cat, *_ in termos_obras))
+    for c in contratacoes:
+        chave = c.get("numeroControlePNCP")
+        if chave in vistos:
+            continue
+        vistos.add(chave)
+        fim = parse_data(c.get("dataEncerramentoProposta"))
+        if fim and fim < agora:
+            continue
+        encontrados = obras_encontradas(c.get("objetoCompra"), termos_obras)
+        if encontrados:
+            r = montar_resultado(c, encontrados, verificacao="objeto")
+            # aba = primeira categoria encontrada, na ordem de termos_obras.txt
+            r["aba"] = min((cat for cat, _ in encontrados), key=categorias.index)
+            r["ordem_aba"] = categorias.index(r["aba"])
+            yield r
+
+
+def salvar_xlsx(caminho, implementos, descartados, obras):
+    """Planilha Excel: aba de implementos, aba dos descartados com veículo e uma aba
+    por categoria de obra. Requer openpyxl (pip install openpyxl)."""
+    try:
+        from openpyxl import Workbook
+        from openpyxl.styles import Alignment, Font, PatternFill
+        from openpyxl.utils import get_column_letter
+    except ImportError:
+        raise SystemExit("Para --xlsx instale o openpyxl: pip install openpyxl")
+    base = Font(name="Arial", size=10)
+    cab = Font(name="Arial", size=10, bold=True, color="FFFFFF")
+    link = Font(name="Arial", size=10, color="0563C1", underline="single")
+    fundo_cab = PatternFill("solid", fgColor="1F4E78")
+    amarelo = PatternFill("solid", fgColor="FFF2CC")
+    agora = datetime.now()
+
+    def num(v):
+        try:
+            return float(v) if v not in (None, "") else None
+        except (TypeError, ValueError):
+            return None
+
+    def aba(wb, titulo, colunas, linhas, nota):
+        # nome de aba: até 31 caracteres, sem / \\ ? * [ ] :
+        ws = wb.create_sheet(re.sub(r"[/\\?*\[\]:]", "-", titulo)[:31])
+        for c, (nome, largura, _) in enumerate(colunas, 1):
+            x = ws.cell(1, c, nome)
+            x.font, x.fill = cab, fundo_cab
+            x.alignment = Alignment(wrap_text=True, vertical="center")
+            ws.column_dimensions[get_column_letter(c)].width = largura
+        ws.row_dimensions[1].height = 30
+        ws.freeze_panes = "B2"
+        for i, r in enumerate(linhas, 2):
+            fim = parse_data(r.get("encerramento_proposta"))
+            for c, (nome, largura, campo) in enumerate(colunas, 1):
+                v = campo(r)
+                if isinstance(v, str):  # textos do PNCP às vezes trazem caracteres de controle
+                    v = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", " ", v)
+                x = ws.cell(i, c, v)
+                x.font = base
+                x.alignment = Alignment(wrap_text=largura >= 30, vertical="top")
+                if isinstance(v, datetime):
+                    x.number_format = "dd/mm/yyyy hh:mm"
+                elif isinstance(v, float):
+                    x.number_format = '#,##0.00;-#,##0.00;"-"'
+                elif nome.startswith(("Edital", "Sistema")) and v:
+                    x.value, x.hyperlink, x.font = "abrir", v, link
+            if fim and (fim - agora).days < 2:
+                for c in range(1, len(colunas) + 1):
+                    ws.cell(i, c).fill = amarelo
+        ws.auto_filter.ref = f"A1:{get_column_letter(len(colunas))}{len(linhas) + 1}"
+        x = ws.cell(len(linhas) + 3, 1, nota)
+        x.font = Font(name="Arial", size=9, italic=True, color="595959")
+
+    comuns_ini = [("Encerra proposta", 17, lambda r: parse_data(r["encerramento_proposta"])),
+                  ("Modalidade", 16, lambda r: r["modalidade"]),
+                  ("Categoria", 26, lambda r: r["categoria"]),
+                  ("Órgão", 36, lambda r: r["orgao"]),
+                  ("Município", 18, lambda r: r["municipio"]),
+                  ("UF", 5, lambda r: r["uf"]),
+                  ("Valor estimado (R$)", 16, lambda r: num(r["valor_estimado"]))]
+    comuns_fim = [("Objeto", 70, lambda r: r["objeto"]),
+                  ("Termos encontrados", 30, lambda r: r["termos"]),
+                  ("Edital PNCP", 11, lambda r: r["link_edital"].strip()),
+                  ("Sistema de origem", 11, lambda r: r["link_sistema_origem"].strip()),
+                  ("Nº controle PNCP", 27, lambda r: r["numero_controle_pncp"])]
+    wb = Workbook()
+    wb.remove(wb.active)
+    aba(wb, "Implementos", comuns_ini + [
+        ("Valor itens implemento (R$)", 16, lambda r: num(r["valor_itens_implemento"])),
+        ("Itens do implemento", 70, lambda r: r["itens_implemento"].replace(" || ", "\n")),
+        ("Conferência", 20, lambda r: r["verificacao_caminhao"])] + comuns_fim, implementos,
+        "Implementos rodoviários sem o veículo. Linhas em amarelo: proposta encerra em menos "
+        "de 2 dias. Valor 0 ou vazio: sigiloso.")
+    aba(wb, "Com veículo (descartados)", comuns_ini + comuns_fim,
+        descartados,
+        "Compras do caminhão/caminhonete junto com o implemento. Para conferência.")
+    for categoria in dict.fromkeys(r["aba"] for r in sorted(obras, key=lambda r: r["ordem_aba"])):
+        aba(wb, categoria, comuns_ini + comuns_fim, [r for r in obras if r["aba"] == categoria],
+            f"Obras/estruturas: {categoria}. Uma contratação aparece só na aba da primeira "
+            "categoria encontrada (ordem de termos_obras.txt); todas estão na coluna Categoria.")
+    wb.save(caminho)
+    print(f"Planilha salva em {caminho}", file=sys.stderr)
+
+
 def salvar_csv(resultados, caminho):
     campos = list(resultados[0].keys()) if resultados else ["orgao"]
     # utf-8-sig + ';' abre direto no Excel em português
@@ -604,8 +781,8 @@ def salvar_csv(resultados, caminho):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--dias", type=int, default=60,
-                    help="considera propostas que encerram até N dias a partir de hoje (padrão: 60)")
+    ap.add_argument("--dias", type=int, default=90,
+                    help="considera propostas que encerram até N dias a partir de hoje (padrão: 90)")
     ap.add_argument("--uf", help="filtra por UF (ex.: SP)")
     ap.add_argument("--modalidades", default=MODALIDADES_PADRAO,
                     help="códigos PNCP separados por vírgula (padrão: 6,7,4,5,8 = pregão e "
@@ -614,7 +791,13 @@ def main():
                     help="arquivo de termos por categoria (padrão: termos.txt ao lado do script)")
     ap.add_argument("--termo", action="append", default=[],
                     help="termo extra a procurar no objeto, além do arquivo (pode repetir)")
-    ap.add_argument("--csv", help="também salva o resultado em CSV")
+    ap.add_argument("--termos-obras", default=str(ARQUIVO_TERMOS_OBRAS),
+                    help="arquivo de termos de obras/estruturas (padrão: termos_obras.txt)")
+    ap.add_argument("--sem-obras", action="store_true",
+                    help="não procura obras/estruturas, só implementos")
+    ap.add_argument("--csv", help="também salva o resultado em CSV (obras em <nome>_obras.csv)")
+    ap.add_argument("--xlsx", help="salva planilha Excel com uma aba para implementos e uma "
+                                   "por categoria de obra (requer openpyxl)")
     ap.add_argument("--incluir-caminhao", action="store_true",
                     help="não descarta pregões que compram o caminhão junto com o implemento")
     args = ap.parse_args()
@@ -634,10 +817,15 @@ def main():
                   file=sys.stderr)
             yield from buscar_contratacoes(data_final, args.uf, paginas_falhas, mod)
 
-    itens = todas_as_modalidades()
+    contratacoes = list(todas_as_modalidades())
+    agora = datetime.now()
     descartados = []
-    resultados = list(filtrar(itens, termos, datetime.now(), args.incluir_caminhao, descartados))
+    resultados = list(filtrar(contratacoes, termos, agora, args.incluir_caminhao, descartados))
     resultados.sort(key=lambda r: r["encerramento_proposta"] or "")
+    obras = []
+    if not args.sem_obras and Path(args.termos_obras).exists():
+        obras = sorted(filtrar_obras(contratacoes, carregar_termos_obras(args.termos_obras), agora),
+                       key=lambda r: r["encerramento_proposta"] or "")
 
     imprimir(resultados)
     if descartados:
@@ -646,8 +834,22 @@ def main():
     if paginas_falhas:
         print(f"\nATENÇÃO: a API falhou nas páginas {', '.join(paginas_falhas)} "
               f"({TAMANHO_PAGINA} pregões cada), que ficaram de fora. Rode de novo mais tarde.")
+    if obras:
+        print(f"\nObras/estruturas: {len(obras)} contratação(ões) "
+              f"(lista completa com --xlsx ou --csv):")
+        por_aba = {}
+        for r in obras:
+            por_aba[r["aba"]] = por_aba.get(r["aba"], 0) + 1
+        for nome, n in por_aba.items():
+            print(f"  {n:5d}  {nome}")
     if args.csv:
         salvar_csv(resultados, args.csv)
+        if obras:
+            salvar_csv(obras, str(Path(args.csv).with_suffix("")) + "_obras.csv")
+    if args.xlsx:
+        salvar_xlsx(args.xlsx, resultados,
+                    [montar_resultado(d, termos_encontrados(d.get("objetoCompra"), termos))
+                     for d in descartados], obras)
 
 
 if __name__ == "__main__":

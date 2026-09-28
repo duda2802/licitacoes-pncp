@@ -55,6 +55,27 @@ Se a API de itens falhar, a decisão é feita só pelo objeto e o resultado vem 
 um aviso para conferir no edital. Para ver também os pregões descartados, use
 `--incluir-caminhao`.
 
+## Obras e estruturas (`termos_obras.txt`)
+
+Além dos implementos, o script procura obras/estruturas no objeto: galpão,
+estrutura metálica, cobertura, construção, reforma, terraplenagem, pavimentação,
+drenagem, saneamento, serviços de engenharia etc. Cada categoria de
+`termos_obras.txt` vira uma **aba separada** na planilha (`--xlsx`); uma contratação
+fica na aba da primeira categoria encontrada (ordem do arquivo) e todas aparecem
+na coluna Categoria. Aqui serviço conta (obra é serviço) e não há regra de caminhão.
+
+- Termo com `~` na frente é genérico ("~escola", "~execução", "~reforma",
+  "~cobertura", "~depósito"): só conta se o objeto também for de obra/engenharia
+  (`RE_CONTEXTO_OBRA`). Assim "reforma da escola" entra e "merenda escolar" não.
+- Reforma/manutenção de pneus, veículos, móveis, equipamentos, ar-condicionado
+  não ativa os termos genéricos (`RE_NAO_E_EDIFICACAO`).
+- Compra de material ("aquisição de tampões para rede de esgoto") não é obra: só
+  valem os termos específicos da primeira categoria (galpão, estrutura metálica,
+  telhas termoacústicas, pré-moldado...).
+- Locação/aluguel logo antes do termo não conta ("locação de estrutura metálica").
+
+`--sem-obras` desliga essa busca; `--termos-obras outro.txt` usa outro arquivo.
+
 ## Termos (`termos.txt`)
 
 Um termo por linha, agrupados por categoria. Edite à vontade, sem mexer no código:
@@ -79,12 +100,13 @@ madeira, roçadeira costal, lixeira etc. "tipo" entre as palavras também é ace
 
 ## Uso
 
-Requer Python 3.8+ e nenhuma dependência externa.
+Requer Python 3.8+. Só `--xlsx` precisa do openpyxl (`pip install openpyxl`).
 
 ```bash
-python pncp_implementos.py                      # propostas que encerram nos próximos 60 dias, Brasil todo
+python pncp_implementos.py                      # propostas que encerram nos próximos 90 dias, Brasil todo
 python pncp_implementos.py --uf GO --dias 30    # só GO, próximos 30 dias
-python pncp_implementos.py --csv resultado.csv  # também salva CSV (abre no Excel)
+python pncp_implementos.py --xlsx resultado.xlsx  # planilha com abas: implementos + uma por categoria de obra
+python pncp_implementos.py --csv resultado.csv  # também salva CSV (obras em resultado_obras.csv)
 python pncp_implementos.py --termo "carroceria graneleira"   # termo extra, só nesta execução
 python pncp_implementos.py --termos outro.txt   # usa outro arquivo de termos
 python pncp_implementos.py --incluir-caminhao   # não descarta caminhão + implemento

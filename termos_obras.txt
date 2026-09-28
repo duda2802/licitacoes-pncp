@@ -1,0 +1,139 @@
+# Termos de obras / estruturas procurados no objeto (pncp_implementos.py).
+# Cada categoria vira uma aba separada na planilha (--xlsx).
+#
+# Formato igual ao termos.txt, mais:
+#   ~termo   termo genérico: só conta se o objeto também for de obra/engenharia
+#            (ver RE_CONTEXTO_OBRA no script). Ex.: "~escola" pega "reforma da
+#            escola", mas não "merenda escolar"; "~execução" não pega
+#            "execução de serviços de limpeza".
+# Uma contratação que casa com várias categorias fica na aba da primeira delas
+# (ordem deste arquivo); todas aparecem na coluna "categoria".
+
+=== CATEGORIA: GALPÃO / ESTRUTURA METÁLICA ===
+galpão
+barracão
+pavilhão
+estrutura metálica
+estruturas metálicas
+~estrutura em aço
+~estrutura de aço
+cobertura metálica
+telhado metálico
+~coberta
+~cobertura
+pré-moldado
+pré-fabricado
+pré-engenhado
+~armazém
+~depósito
+~almoxarifado
+~centro de distribuição
+quadra coberta
+cobertura de quadra
+~ginásio
+arquibancada
+mezanino
+passarela
+marquise
+pergolado
+~abrigo
+feira coberta
+~mercado municipal
+~terminal
+~garagem
+abrigo de ônibus
+abrigo de máquinas
+fornecimento e montagem
+fabricação e montagem
+telhas termoacústicas
+steel frame
+
+=== CATEGORIA: CONSTRUÇÃO / EDIFICAÇÃO ===
+~construção
+edificação
+obra civil
+obras civis
+~ampliação
+ampliação e reforma
+~adequação
+~readequação
+execução de obra
+~UBS
+~unidade básica de saúde
+~escola
+~creche
+~CMEI
+~centro comunitário
+~sede administrativa
+~CRAS
+alvenaria
+concreto armado
+~fundação
+
+=== CATEGORIA: REFORMA / MANUTENÇÃO PREDIAL ===
+~reforma
+~reformas
+~revitalização
+~requalificação
+~recuperação
+~restauração
+~acessibilidade
+~modernização
+~retrofit
+manutenção predial
+~manutenção preventiva e corretiva
+~conservação
+~reparos
+substituição de cobertura
+troca de telhado
+impermeabilização
+~pintura
+
+=== CATEGORIA: TERRAPLENAGEM ===
+terraplanagem
+terraplenagem
+movimentação de terra
+corte e aterro
+~escavação
+regularização de terreno
+~nivelamento
+limpeza de terreno
+destoca
+preparo de terreno
+~compactação
+
+=== CATEGORIA: DRENAGEM / PAVIMENTAÇÃO ===
+~drenagem
+drenagem pluvial
+~galerias
+bueiro
+meio-fio
+sarjeta
+pavimentação
+pavimento asfáltico
+CBUQ
+bloquete
+intertravado
+recapeamento
+tapa-buraco
+infraestrutura urbana
+~contenção
+muro de arrimo
+
+=== CATEGORIA: SANEAMENTO ===
+rede de esgoto
+rede de água
+adutora
+~saneamento
+
+=== CATEGORIA: ENGENHARIA (GERAL) ===
+contratação de empresa de engenharia
+serviços de engenharia
+serviço comum de engenharia
+obra de engenharia
+empreitada
+empreitada por preço global
+empreitada por preço unitário
+~execução
+fornecimento de material e mão de obra
+regime de execução indireta
