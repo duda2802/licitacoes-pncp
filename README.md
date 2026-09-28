@@ -1,9 +1,8 @@
 # licitacoes-pncp
 
 Script `pncp_implementos.py`: consulta a API pública do PNCP
-(`/api/consulta/v1/contratacoes/proposta`) e lista **pregões e concorrências**
-(eletrônicos e presenciais; dispensa com `--modalidades 6,7,4,5,8`) com **propostas
-abertas** cujo objeto contenha algum termo do arquivo `termos.txt` (implementos
+(`/api/consulta/v1/contratacoes/proposta`) e lista **pregões, concorrências e
+dispensas** com **propostas abertas** cujo objeto contenha algum termo do arquivo `termos.txt` (implementos
 rodoviários da Brazil Implementos e implementos agrícolas).
 
 Objetos genéricos ("aquisição de máquinas e equipamentos", "patrulha mecanizada",
@@ -82,7 +81,7 @@ python pncp_implementos.py --csv resultado.csv  # também salva CSV (abre no Exc
 python pncp_implementos.py --termo "grade aradora"   # termo extra, só nesta execução
 python pncp_implementos.py --termos outro.txt   # usa outro arquivo de termos
 python pncp_implementos.py --incluir-caminhao   # não descarta caminhão + implemento
-python pncp_implementos.py --modalidades 6      # só pregão eletrônico (padrão: 6,7,4,5)
+python pncp_implementos.py --modalidades 6      # só pregão eletrônico (padrão: 6,7,4,5,8)
 ```
 
 Modalidades (código PNCP): 6 pregão eletrônico, 7 pregão presencial,

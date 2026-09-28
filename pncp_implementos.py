@@ -35,10 +35,10 @@ from pathlib import Path
 
 API_URL = "https://pncp.gov.br/api/consulta/v1/contratacoes/proposta"
 API_ITENS = "https://pncp.gov.br/api/pncp/v1/orgaos/{cnpj}/compras/{ano}/{seq}/itens"
-# Modalidades consultadas (código PNCP): pregão e concorrência, eletrônicos e presenciais.
+# Modalidades consultadas (código PNCP): pregão, concorrência e dispensa.
 MODALIDADES = {6: "Pregão eletrônico", 7: "Pregão presencial", 4: "Concorrência eletrônica",
                5: "Concorrência presencial", 8: "Dispensa"}
-MODALIDADES_PADRAO = "6,7,4,5"
+MODALIDADES_PADRAO = "6,7,4,5,8"
 TAMANHO_PAGINA = 50  # máximo aceito pela API
 
 # Arquivo com os termos procurados no objeto, agrupados por categoria.
@@ -115,6 +115,7 @@ NAO_E_COMPRA = {
     "lubrificante", "lubrificantes", "graxa", "exposicao", "concessao",
     "aplicacao", "pneu", "pneus", "camara", "camaras", "combustivel", "combustiveis",
     "oleo", "oleos", "filtro", "filtros", "bateria", "baterias",
+    "placa", "placas", "emplacamento", "licenciamento",
 }
 COMPRA = {"aquisicao", "aquisicoes", "compra", "compras", "adquirir"}
 JANELA = 20
@@ -531,8 +532,8 @@ def main():
                     help="considera propostas que encerram até N dias a partir de hoje (padrão: 60)")
     ap.add_argument("--uf", help="filtra por UF (ex.: SP)")
     ap.add_argument("--modalidades", default=MODALIDADES_PADRAO,
-                    help="códigos PNCP separados por vírgula (padrão: 6,7,4,5 = pregão e "
-                         "concorrência, eletrônicos e presenciais; 8 = dispensa)")
+                    help="códigos PNCP separados por vírgula (padrão: 6,7,4,5,8 = pregão e "
+                         "concorrência, eletrônicos e presenciais, e dispensa)")
     ap.add_argument("--termos", default=str(ARQUIVO_TERMOS),
                     help="arquivo de termos por categoria (padrão: termos.txt ao lado do script)")
     ap.add_argument("--termo", action="append", default=[],
