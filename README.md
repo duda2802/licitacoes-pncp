@@ -8,7 +8,8 @@ agrícola, grade, plantadeira, rolo faca, distribuidor de adubo...) ficam de for
 não são fabricados. Além de não estarem nos termos, um item que fala em agrícola/
 tratorizado, ou uma "carreta ..." num objeto agrícola, não conta mesmo que use um
 termo ("carreta agrícola ... caçamba basculante", "tanque pipa agrícola com
-reboque"). Ver `RE_AGRICOLA` no script.
+reboque"). Ver `RE_AGRICOLA` no script. Exceção: carreta/reboque/tanque agrícola
+com valor unitário acima de R$ 100 mil entra (`VALOR_MINIMO_CARRETA_AGRICOLA`).
 
 Objetos genéricos ("aquisição de máquinas e equipamentos", "patrulha mecanizada",
 "equipamentos agrícolas") também são conferidos: o script abre os itens e o

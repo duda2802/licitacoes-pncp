@@ -188,13 +188,17 @@ def termos_encontrados(objeto, termos):
 # "compatível COM caminhão".
 RE_VEICULO = re.compile(r"\b(?:caminh(?:ao|oes)|veiculos?|cavalos? mecanicos?"
                         r"|caminhonetes?|camionetes?|picapes?|pick ?ups?"
-                        r"|automove(?:l|is)|motocicletas?|onibus|aeronaves?|drones?)\b")
+                        r"|automove(?:l|is)|motocicletas?|onibus)\b")
 # Trator aparece em quase toda descrição de implemento agrícola ("potência
 # mínima trator 75 cv", "acionamento por trator", "farol tipo trator"), então só
 # conta como compra quando é o próprio objeto: no início do texto ("Trator
 # agrícola 4x4 ..."), depois de "aquisição de"/"fornecimento de", "e", "sendo".
 RE_TRATOR = re.compile(r"\b(?:micro ?)?tratore?s?\b|\bmotocultivador(?:es)?\b")
 COMPRA_DE = {"aquisicao", "aquisicoes", "fornecimento", "compra"}
+# drone/aeronave: só no início ou depois de aquisição/kit ("carreta para transportar
+# o drone" é destino)
+RE_DRONE = re.compile(r"\b(?:aeronaves?|drones?)\b")
+ANTES_DE_DRONE_COMPRADO = COMPRA_DE | {"", "kit", "por"}
 ANTES_DE_TRATOR_COMPRADO = COMPRA_DE | {"", "e", "sendo", "novo", "novos", "micro"}
 # "a" antes de caminhão/veículo (masculinos) é sempre preposição
 DESTINO = {"para", "p", "em", "no", "na", "nos", "nas", "sobre", "sob", "a", "ao", "aos",
@@ -249,6 +253,13 @@ def inclui_caminhao(texto):
         if anterior == "com" and antes_anterior in ANTES_DE_COM:
             continue
         return True
+    for m in RE_DRONE.finditer(t):
+        antes = [p for p in t[:m.start()].split() if p not in ARTIGOS and not p.isdigit()]
+        anterior = antes[-1] if antes else ""
+        if anterior == "de" and len(antes) > 1 and antes[-2] in COMPRA_DE:
+            return True
+        if anterior in ANTES_DE_DRONE_COMPRADO:
+            return True
     for m in RE_TRATOR.finditer(t):
         antes = [p for p in t[:m.start()].split() if p not in ARTIGOS and not p.isdigit()]
         anterior = antes[-1] if antes else ""
@@ -362,21 +373,40 @@ def item_de_servico(item):
 # pipa agrícola com reboque, recolhedora de café etc. Esses itens não contam
 # mesmo que a descrição use um termo ("carreta agrícola ... caçamba basculante").
 RE_AGRICOLA = re.compile(r"\b(?:agricol|tratorizad|tratorad|recolhedor|colhedo|colhedeira"
-                         r"|ensiladeira|forrage|carretinha)\w*")
+                         r"|ensiladeira|forrage|carretinha|calcario|adubo|fertilizant)\w*")
 RE_OBJETO_AGRICOLA = re.compile(r"\b(?:agricol|agropecuari|patrulha|forrage|lavoura)\w*")
 # no objeto genérico o termo tem de estar no começo do item: "Tanque pipa 8.000 L",
 # não "Cortador de piso ... com tanque de água"
 PALAVRAS_INICIO_ITEM = 15
 
 
+# Exceção: carreta/reboque/tanque agrícola acima deste valor unitário entra.
+VALOR_MINIMO_CARRETA_AGRICOLA = 100_000
+RE_CARRETA = re.compile(r"\b(?:carret|reboque|semirreboque|tanque)\w*")
+
+
+def valor_unitario(item):
+    """Valor unitário estimado do item (ou total/quantidade), 0 se não informado."""
+    unit = item.get("valorUnitarioEstimado")
+    if unit:
+        return float(unit)
+    total, qtd = item.get("valorTotal") or 0, item.get("quantidade") or 1
+    return float(total) / float(qtd) if qtd else float(total)
+
+
 def item_agricola(item, objeto):
     """Item que é implemento agrícola: fala em agrícola/tratorizado, ou é uma
-    "carreta ..." num objeto agrícola ("carretas agrícolas e reboque prancha")."""
+    "carreta ..." num objeto agrícola ("carretas agrícolas e reboque prancha").
+    Carreta/reboque/tanque agrícola acima de VALOR_MINIMO_CARRETA_AGRICOLA não
+    conta como agrícola (entra no resultado)."""
     desc = normalizar(item.get("descricao"))
-    if RE_AGRICOLA.search(desc):
-        return True
-    return desc.startswith(("carreta ", "carretas ")) and bool(
-        RE_OBJETO_AGRICOLA.search(normalizar(objeto)))
+    agricola = bool(RE_AGRICOLA.search(desc)) or (
+        desc.startswith(("carreta ", "carretas "))
+        and bool(RE_OBJETO_AGRICOLA.search(normalizar(objeto))))
+    if not agricola:
+        return False
+    carreta = RE_CARRETA.search(" ".join(desc.split()[:8]))
+    return not (carreta and valor_unitario(item) > VALOR_MINIMO_CARRETA_AGRICOLA)
 
 
 def termo_no_inicio(texto, termos):
@@ -404,7 +434,7 @@ def avaliar_itens(compra, termos, so_com_termo=False):
         implemento = [i for i in nao_agricola if not inclui_caminhao(i.get("descricao"))]
         return bool(implemento), implemento or nao_agricola, "itens (objeto genérico)"
     if not itens:  # sem itens: decide só pelo objeto
-        if item_agricola({"descricao": objeto}, objeto):
+        if item_agricola({"descricao": objeto, "valorTotal": compra.get("valorTotalEstimado")}, objeto):
             return False, [], "agrícola"
         aceita = not inclui_caminhao(objeto)
         return aceita, [], "objeto (itens indisponíveis)"
@@ -422,6 +452,10 @@ def avaliar_itens(compra, termos, so_com_termo=False):
     if not materiais:  # só itens de serviço no catálogo: decide pelo objeto
         return not inclui_caminhao(objeto), [], "objeto (itens de serviço)"
     uteis = [i for i in materiais if not item_agricola(i, objeto)]
+    if RE_OBJETO_AGRICOLA.search(normalizar(objeto)):
+        # objeto agrícola: só entra carreta/reboque/tanque (que passou do valor mínimo)
+        uteis = [i for i in uteis if RE_CARRETA.search(
+            " ".join(normalizar(i.get("descricao")).split()[:8]))]
     if not uteis:
         return False, [], "agrícola"
     sem_veiculo = [i for i in uteis if not inclui_caminhao(i.get("descricao"))]

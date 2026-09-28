@@ -141,3 +141,9 @@ semirreboque
 semi reboque
 tanque vácuo
 tanque de vácuo
+
+=== CATEGORIA: CARRETA AGRÍCOLA (ACIMA DE R$ 100 MIL) ===
+# carreta agrícola só entra se o valor unitário passar de R$ 100 mil
+# (VALOR_MINIMO_CARRETA_AGRICOLA no script); abaixo disso é descartada
+carreta agrícola
+carreta tanque agrícola
