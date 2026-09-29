@@ -147,3 +147,35 @@ tanque de vácuo
 # (VALOR_MINIMO_CARRETA_AGRICOLA no script); abaixo disso é descartada
 carreta agrícola
 carreta tanque agrícola
+
+=== CATEGORIA: CONTAINER / CONTENTOR ===
+# vai para a aba "Containers" da planilha
+container
+containers
+contêiner
+contêineres
+conteiner
+conteineres
+contentor
+contentores
+container de lixo
+contêiner de lixo
+container plástico
+contêiner plástico
+container de polietileno
+contentor de polietileno
+contentor PEAD
+container PEAD
+container com rodas
+contêiner com rodízios
+container 120 litros
+container 240 litros
+container 360 litros
+container 660 litros
+container 700 litros
+container 1000 litros
+container 1200 litros
+container metálico
+contêiner metálico
+container de aço
+contentor metálico

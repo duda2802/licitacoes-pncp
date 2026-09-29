@@ -55,6 +55,14 @@ Se a API de itens falhar, a decisão é feita só pelo objeto e o resultado vem 
 um aviso para conferir no edital. Para ver também os pregões descartados, use
 `--incluir-caminhao`.
 
+## Containers
+
+A categoria `CONTAINER / CONTENTOR` de `termos.txt` (container, contêiner,
+contentor, PEAD, 240/1000 L, metálico...) segue as mesmas regras dos implementos
+(só compra: locação, concessão, serviço de coleta e adesivos "dos contentores"
+não contam) e na planilha (`--xlsx`) vai para a aba **Containers**. Container de
+esterilização/laboratório fica de fora (`RE_FORA_DO_ESCOPO`).
+
 ## Obras e estruturas (`termos_obras.txt`)
 
 Além dos implementos, o script procura obras/estruturas no objeto: galpão,

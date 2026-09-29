@@ -46,6 +46,8 @@ ARQUIVO_TERMOS = Path(__file__).with_name("termos.txt")
 # Termos de obras / estruturas (galpão, terraplenagem, pavimentação...), com abas próprias.
 ARQUIVO_TERMOS_OBRAS = Path(__file__).with_name("termos_obras.txt")
 CATEGORIA_EXTRA = "TERMO EXTRA"
+# categorias de termos.txt que começam assim vão para a aba "Containers" (--xlsx)
+CATEGORIA_CONTAINER = "CONTAINER"
 
 # Entre as palavras de um termo aceita-se uma destas preposições (ou nenhuma):
 # "tanque de água" casa "tanque para água", "tanque d'água" e "tanque água";
@@ -118,6 +120,7 @@ NAO_E_COMPRA = {
     "aplicacao", "pneu", "pneus", "camara", "camaras", "combustivel", "combustiveis",
     "oleo", "oleos", "filtro", "filtros", "bateria", "baterias",
     "placa", "placas", "emplacamento", "licenciamento", "fretamento", "frete",
+    "adesivo", "adesivos", "etiqueta", "etiquetas",
 }
 COMPRA = {"aquisicao", "aquisicoes", "compra", "compras", "adquirir"}
 JANELA = 20
@@ -129,7 +132,7 @@ JANELA = 20
 ANTES_DE_CAMINHAO_DESTINO = {"para", "p", "em", "no", "na", "nos", "nas", "sobre",
                              "a", "ao", "aos"}
 ANTES_DE_GENERICO_DESTINO = ANTES_DE_CAMINHAO_DESTINO | {"dos", "das", "do", "da"}
-RE_TERMO_GENERICO = re.compile(r"implementos?\b")
+RE_TERMO_GENERICO = re.compile(r"(?:implementos?|containers?|conteiner(?:es)?|contentor(?:es)?)\b")
 
 
 def ocorrencia_de_compra(texto_normalizado, inicio):
@@ -431,13 +434,17 @@ def buscar_itens(compra, tamanho=50):
         return None
 
 
+RE_LOCACAO = re.compile(r"\b(?:locac\w*|aluguel|alugueis|comodato|concessao)\b")
+
+
 def item_de_servico(item):
     """Item de serviço/peça: marcado como serviço no catálogo ou descrição que começa
     com locação, manutenção, peça etc. ("14507-Locação de equipamento ...")."""
     if item.get("materialOuServico") == "S":
         return True
     palavras = [p for p in normalizar(item.get("descricao")).split() if not p.isdigit()]
-    return any(p in NAO_E_COMPRA for p in palavras[:3])
+    return (any(p in NAO_E_COMPRA for p in palavras[:6])
+            or bool(RE_LOCACAO.search(" ".join(palavras[:12]))))
 
 
 # Implemento agrícola não interessa (não é fabricado): carreta agrícola, tanque
@@ -445,6 +452,9 @@ def item_de_servico(item):
 # mesmo que a descrição use um termo ("carreta agrícola ... caçamba basculante").
 RE_AGRICOLA = re.compile(r"\b(?:agricol|tratorizad|tratorad|recolhedor|colhedo|colhedeira"
                          r"|ensiladeira|forrage|carretinha|calcario|adubo|fertilizant)\w*")
+# Fora do escopo por outro motivo: container de esterilização/laboratório, de TI.
+RE_FORA_DO_ESCOPO = re.compile(
+    r"\b(?:esteriliza|cirurgic|hospitala|laborator|amostra|kubernetes|docker|openshift)\w*")
 RE_OBJETO_AGRICOLA = re.compile(r"\b(?:agricol|agropecuari|patrulha|forrage|lavoura)\w*")
 # no objeto genérico o termo tem de estar no começo do item: "Tanque pipa 8.000 L",
 # não "Cortador de piso ... com tanque de água"
@@ -471,6 +481,8 @@ def item_agricola(item, objeto):
     Carreta/reboque/tanque agrícola acima de VALOR_MINIMO_CARRETA_AGRICOLA não
     conta como agrícola (entra no resultado)."""
     desc = normalizar(item.get("descricao"))
+    if RE_FORA_DO_ESCOPO.search(desc):
+        return True
     agricola = bool(RE_AGRICOLA.search(desc)) or (
         desc.startswith(("carreta ", "carretas "))
         and bool(RE_OBJETO_AGRICOLA.search(normalizar(objeto))))
@@ -498,7 +510,8 @@ def avaliar_itens(compra, termos, so_com_termo=False):
     objeto = compra.get("objetoCompra")
     itens = buscar_itens(compra)
     if so_com_termo:
-        com_termo = [i for i in itens or [] if termo_no_inicio(i.get("descricao"), termos)]
+        com_termo = [i for i in itens or [] if termo_no_inicio(i.get("descricao"), termos)
+                     and not item_de_servico(i)]
         nao_agricola = [i for i in com_termo if not item_agricola(i, objeto)]
         if com_termo and not nao_agricola:
             return False, [], "agrícola"
@@ -509,7 +522,8 @@ def avaliar_itens(compra, termos, so_com_termo=False):
             return False, [], "agrícola"
         aceita = not inclui_caminhao(objeto)
         return aceita, [], "objeto (itens indisponíveis)"
-    com_termo = [i for i in itens if termos_encontrados(i.get("descricao"), termos)]
+    com_termo = [i for i in itens if termos_encontrados(i.get("descricao"), termos)
+                 and not item_de_servico(i)]
     if com_termo:
         nao_agricola = [i for i in com_termo if not item_agricola(i, objeto)]
         if not nao_agricola:
@@ -521,6 +535,8 @@ def avaliar_itens(compra, termos, so_com_termo=False):
     # os itens de material que não são veículo nem agrícolas
     materiais = [i for i in itens if not item_de_servico(i)]
     if not materiais:  # só itens de serviço no catálogo: decide pelo objeto
+        if RE_LOCACAO.search(normalizar(objeto)):  # locação/concessão, não compra
+            return False, [], "locação"
         return not inclui_caminhao(objeto), [], "objeto (itens de serviço)"
     uteis = [i for i in materiais if not item_agricola(i, objeto)]
     if RE_OBJETO_AGRICOLA.search(normalizar(objeto)):
@@ -623,7 +639,7 @@ def filtrar(itens, termos, agora, incluir_caminhao=False, descartados=None):
         aceita, itens_impl, verificacao = avaliar_itens(item, termos)
         if aceita:
             yield montar_resultado(item, encontrados, itens_impl, verificacao)
-        elif verificacao != "agrícola" and descartados is not None:
+        elif verificacao not in ("agrícola", "locação") and descartados is not None:
             descartados.append(item)
 
 
@@ -752,12 +768,24 @@ def salvar_xlsx(caminho, implementos, descartados, obras):
                   ("Nº controle PNCP", 27, lambda r: r["numero_controle_pncp"])]
     wb = Workbook()
     wb.remove(wb.active)
+
+    def so_container(r):
+        return all(c.startswith(CATEGORIA_CONTAINER) for c in r["categoria"].split(" | "))
+
+    containers = [r for r in implementos if so_container(r)]
+    implementos = [r for r in implementos if not so_container(r)]
     aba(wb, "Implementos", comuns_ini + [
         ("Valor itens implemento (R$)", 16, lambda r: num(r["valor_itens_implemento"])),
         ("Itens do implemento", 70, lambda r: r["itens_implemento"].replace(" || ", "\n")),
         ("Conferência", 20, lambda r: r["verificacao_caminhao"])] + comuns_fim, implementos,
         "Implementos rodoviários sem o veículo. Linhas em amarelo: proposta encerra em menos "
         "de 2 dias. Valor 0 ou vazio: sigiloso.")
+    aba(wb, "Containers", comuns_ini + [
+        ("Valor itens container (R$)", 16, lambda r: num(r["valor_itens_implemento"])),
+        ("Itens", 70, lambda r: r["itens_implemento"].replace(" || ", "\n")),
+        ("Conferência", 20, lambda r: r["verificacao_caminhao"])] + comuns_fim, containers,
+        "Compra de container/contentor (lixo, PEAD, metálico...). Locação e serviço ficam de "
+        "fora. Linhas em amarelo: proposta encerra em menos de 2 dias.")
     aba(wb, "Com veículo (descartados)", comuns_ini + comuns_fim,
         descartados,
         "Compras do caminhão/caminhonete junto com o implemento. Para conferência.")
