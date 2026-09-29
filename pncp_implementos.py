@@ -435,6 +435,7 @@ def buscar_itens(compra, tamanho=50):
 
 
 RE_LOCACAO = re.compile(r"\b(?:locac\w*|aluguel|alugueis|comodato|concessao)\b")
+RE_SERVICO_OBJETO = re.compile(r"^(?:\w+ ){0,6}(?:transporte|coleta|servicos?|prestacao)\b")
 
 
 def item_de_servico(item):
@@ -455,6 +456,9 @@ RE_AGRICOLA = re.compile(r"\b(?:agricol|tratorizad|tratorad|recolhedor|colhedo|c
 # Fora do escopo por outro motivo: container de esterilização/laboratório, de TI.
 RE_FORA_DO_ESCOPO = re.compile(
     r"\b(?:esteriliza|cirurgic|hospitala|laborator|amostra|kubernetes|docker|openshift)\w*")
+# objeto de instrumental médico/odontológico: "caixa tipo container" ali não conta
+RE_OBJETO_FORA_DO_ESCOPO = re.compile(
+    r"\b(?:instrumenta\w*|cirurgic\w*|esteriliza\w*|odontolog\w*)")
 RE_OBJETO_AGRICOLA = re.compile(r"\b(?:agricol|agropecuari|patrulha|forrage|lavoura)\w*")
 # no objeto genérico o termo tem de estar no começo do item: "Tanque pipa 8.000 L",
 # não "Cortador de piso ... com tanque de água"
@@ -481,7 +485,7 @@ def item_agricola(item, objeto):
     Carreta/reboque/tanque agrícola acima de VALOR_MINIMO_CARRETA_AGRICOLA não
     conta como agrícola (entra no resultado)."""
     desc = normalizar(item.get("descricao"))
-    if RE_FORA_DO_ESCOPO.search(desc):
+    if RE_FORA_DO_ESCOPO.search(desc) or RE_OBJETO_FORA_DO_ESCOPO.search(normalizar(objeto)):
         return True
     agricola = bool(RE_AGRICOLA.search(desc)) or (
         desc.startswith(("carreta ", "carretas "))
@@ -535,7 +539,9 @@ def avaliar_itens(compra, termos, so_com_termo=False):
     # os itens de material que não são veículo nem agrícolas
     materiais = [i for i in itens if not item_de_servico(i)]
     if not materiais:  # só itens de serviço no catálogo: decide pelo objeto
-        if RE_LOCACAO.search(normalizar(objeto)):  # locação/concessão, não compra
+        obj = normalizar(objeto)
+        if RE_LOCACAO.search(obj) or (RE_SERVICO_OBJETO.search(obj) and not RE_AQUISICAO.search(obj)):
+            # locação/concessão/transporte/coleta: contrata o serviço, não compra
             return False, [], "locação"
         return not inclui_caminhao(objeto), [], "objeto (itens de serviço)"
     uteis = [i for i in materiais if not item_agricola(i, objeto)]
@@ -700,9 +706,10 @@ def filtrar_obras(contratacoes, termos_obras, agora):
             yield r
 
 
-def salvar_xlsx(caminho, implementos, descartados, obras):
-    """Planilha Excel: aba de implementos, aba dos descartados com veículo e uma aba
-    por categoria de obra. Requer openpyxl (pip install openpyxl)."""
+def salvar_xlsx(caminho, implementos, descartados, obras, containers=()):
+    """Três planilhas Excel separadas, uma por filtro: <base>_implementos.xlsx
+    (implementos + descartados com veículo), <base>_containers.xlsx e
+    <base>_galpao_obras.xlsx (uma aba, grupo na coluna). Requer openpyxl."""
     try:
         from openpyxl import Workbook
         from openpyxl.styles import Alignment, Font, PatternFill
@@ -766,35 +773,44 @@ def salvar_xlsx(caminho, implementos, descartados, obras):
                   ("Edital PNCP", 11, lambda r: r["link_edital"].strip()),
                   ("Sistema de origem", 11, lambda r: r["link_sistema_origem"].strip()),
                   ("Nº controle PNCP", 27, lambda r: r["numero_controle_pncp"])]
-    wb = Workbook()
-    wb.remove(wb.active)
-
-    def so_container(r):
-        return all(c.startswith(CATEGORIA_CONTAINER) for c in r["categoria"].split(" | "))
-
-    containers = [r for r in implementos if so_container(r)]
-    implementos = [r for r in implementos if not so_container(r)]
-    aba(wb, "Implementos", comuns_ini + [
-        ("Valor itens implemento (R$)", 16, lambda r: num(r["valor_itens_implemento"])),
-        ("Itens do implemento", 70, lambda r: r["itens_implemento"].replace(" || ", "\n")),
-        ("Conferência", 20, lambda r: r["verificacao_caminhao"])] + comuns_fim, implementos,
-        "Implementos rodoviários sem o veículo. Linhas em amarelo: proposta encerra em menos "
-        "de 2 dias. Valor 0 ou vazio: sigiloso.")
-    aba(wb, "Containers", comuns_ini + [
-        ("Valor itens container (R$)", 16, lambda r: num(r["valor_itens_implemento"])),
+    colunas_itens = [
+        ("Valor dos itens (R$)", 16, lambda r: num(r["valor_itens_implemento"])),
         ("Itens", 70, lambda r: r["itens_implemento"].replace(" || ", "\n")),
-        ("Conferência", 20, lambda r: r["verificacao_caminhao"])] + comuns_fim, containers,
-        "Compra de container/contentor (lixo, PEAD, metálico...). Locação e serviço ficam de "
-        "fora. Linhas em amarelo: proposta encerra em menos de 2 dias.")
-    aba(wb, "Com veículo (descartados)", comuns_ini + comuns_fim,
-        descartados,
-        "Compras do caminhão/caminhonete junto com o implemento. Para conferência.")
-    for categoria in dict.fromkeys(r["aba"] for r in sorted(obras, key=lambda r: r["ordem_aba"])):
-        aba(wb, categoria, comuns_ini + comuns_fim, [r for r in obras if r["aba"] == categoria],
-            f"Obras/estruturas: {categoria}. Uma contratação aparece só na aba da primeira "
-            "categoria encontrada (ordem de termos_obras.txt); todas estão na coluna Categoria.")
-    wb.save(caminho)
-    print(f"Planilha salva em {caminho}", file=sys.stderr)
+        ("Conferência", 20, lambda r: r["verificacao_caminhao"])]
+    base = str(caminho)[:-5] if str(caminho).lower().endswith(".xlsx") else str(caminho)
+    arquivos = []
+
+    def salvar(sufixo, abas):
+        wb = Workbook()
+        wb.remove(wb.active)
+        for args in abas:
+            aba(wb, *args)
+        nome = f"{base}_{sufixo}.xlsx"
+        wb.save(nome)
+        arquivos.append(nome)
+
+    salvar("implementos", [
+        ("Implementos", comuns_ini + colunas_itens + comuns_fim, implementos,
+         "Implementos rodoviários sem o veículo. Linhas em amarelo: proposta encerra em menos "
+         "de 2 dias. Valor 0 ou vazio: sigiloso."),
+        ("Com veículo (descartados)", comuns_ini + comuns_fim, descartados,
+         "Compras do caminhão/caminhonete junto com o implemento. Para conferência.")])
+    salvar("containers", [
+        ("Containers", comuns_ini + colunas_itens + comuns_fim, containers,
+         "Compra de container/contentor (lixo, PEAD, metálico...). Locação e serviço ficam de "
+         "fora. Linhas em amarelo: proposta encerra em menos de 2 dias.")])
+    obras = sorted(obras, key=lambda r: (r["ordem_aba"], r["encerramento_proposta"] or ""))
+    salvar("galpao_obras", [
+        ("Galpão e obras", [("Grupo", 24, lambda r: r["aba"])] + comuns_ini + comuns_fim, obras,
+         "Obras/estruturas, em ordem de grupo (galpão/estrutura metálica primeiro) e de "
+         "encerramento. Filtre pela coluna Grupo. Linhas em amarelo: encerra em menos de 2 dias.")])
+    for nome in arquivos:
+        print(f"Planilha salva em {nome}", file=sys.stderr)
+
+
+def so_container(resultado):
+    """Resultado cujas categorias são todas de container (vai para a planilha de containers)."""
+    return all(c.startswith(CATEGORIA_CONTAINER) for c in resultado["categoria"].split(" | "))
 
 
 def salvar_csv(resultados, caminho):
@@ -823,9 +839,10 @@ def main():
                     help="arquivo de termos de obras/estruturas (padrão: termos_obras.txt)")
     ap.add_argument("--sem-obras", action="store_true",
                     help="não procura obras/estruturas, só implementos")
-    ap.add_argument("--csv", help="também salva o resultado em CSV (obras em <nome>_obras.csv)")
-    ap.add_argument("--xlsx", help="salva planilha Excel com uma aba para implementos e uma "
-                                   "por categoria de obra (requer openpyxl)")
+    ap.add_argument("--csv", help="também salva CSV: <nome>_implementos.csv, "
+                                  "<nome>_containers.csv e <nome>_galpao_obras.csv")
+    ap.add_argument("--xlsx", help="salva 3 planilhas Excel: <nome>_implementos.xlsx, "
+                                   "<nome>_containers.xlsx e <nome>_galpao_obras.xlsx (requer openpyxl)")
     ap.add_argument("--incluir-caminhao", action="store_true",
                     help="não descarta pregões que compram o caminhão junto com o implemento")
     args = ap.parse_args()
@@ -855,6 +872,9 @@ def main():
         obras = sorted(filtrar_obras(contratacoes, carregar_termos_obras(args.termos_obras), agora),
                        key=lambda r: r["encerramento_proposta"] or "")
 
+    containers = [r for r in resultados if so_container(r)]
+    resultados = [r for r in resultados if not so_container(r)]
+
     imprimir(resultados)
     if descartados:
         print(f"\n{len(descartados)} pregão(ões) descartado(s) por incluir o caminhão "
@@ -862,8 +882,10 @@ def main():
     if paginas_falhas:
         print(f"\nATENÇÃO: a API falhou nas páginas {', '.join(paginas_falhas)} "
               f"({TAMANHO_PAGINA} pregões cada), que ficaram de fora. Rode de novo mais tarde.")
+    if containers:
+        print(f"\nContainers: {len(containers)} contratação(ões) (lista completa com --xlsx ou --csv)")
     if obras:
-        print(f"\nObras/estruturas: {len(obras)} contratação(ões) "
+        print(f"\nGalpão/obras: {len(obras)} contratação(ões) "
               f"(lista completa com --xlsx ou --csv):")
         por_aba = {}
         for r in obras:
@@ -871,13 +893,16 @@ def main():
         for nome, n in por_aba.items():
             print(f"  {n:5d}  {nome}")
     if args.csv:
-        salvar_csv(resultados, args.csv)
+        base = str(Path(args.csv).with_suffix(""))
+        salvar_csv(resultados, f"{base}_implementos.csv")
+        if containers:
+            salvar_csv(containers, f"{base}_containers.csv")
         if obras:
-            salvar_csv(obras, str(Path(args.csv).with_suffix("")) + "_obras.csv")
+            salvar_csv(obras, f"{base}_galpao_obras.csv")
     if args.xlsx:
         salvar_xlsx(args.xlsx, resultados,
                     [montar_resultado(d, termos_encontrados(d.get("objetoCompra"), termos))
-                     for d in descartados], obras)
+                     for d in descartados], obras, containers)
 
 
 if __name__ == "__main__":

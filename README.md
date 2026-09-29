@@ -60,17 +60,17 @@ um aviso para conferir no edital. Para ver também os pregões descartados, use
 A categoria `CONTAINER / CONTENTOR` de `termos.txt` (container, contêiner,
 contentor, PEAD, 240/1000 L, metálico...) segue as mesmas regras dos implementos
 (só compra: locação, concessão, serviço de coleta e adesivos "dos contentores"
-não contam) e na planilha (`--xlsx`) vai para a aba **Containers**. Container de
+não contam) e vai para a planilha própria `<nome>_containers.xlsx`. Container de
 esterilização/laboratório fica de fora (`RE_FORA_DO_ESCOPO`).
 
 ## Obras e estruturas (`termos_obras.txt`)
 
 Além dos implementos, o script procura obras/estruturas no objeto: galpão,
 estrutura metálica, cobertura, construção, reforma, terraplenagem, pavimentação,
-drenagem, saneamento, serviços de engenharia etc. Cada categoria de
-`termos_obras.txt` vira uma **aba separada** na planilha (`--xlsx`); uma contratação
-fica na aba da primeira categoria encontrada (ordem do arquivo) e todas aparecem
-na coluna Categoria. Aqui serviço conta (obra é serviço) e não há regra de caminhão.
+drenagem, saneamento, serviços de engenharia etc. O resultado vai para a
+planilha própria `<nome>_galpao_obras.xlsx`, numa aba só: a coluna **Grupo** traz a
+primeira categoria encontrada (ordem do arquivo, galpão primeiro) e a coluna
+Categoria traz todas. Aqui serviço conta (obra é serviço) e não há regra de caminhão.
 
 - Termo com `~` na frente é genérico ("~escola", "~execução", "~reforma",
   "~cobertura", "~depósito"): só conta se o objeto também for de obra/engenharia
@@ -113,8 +113,9 @@ Requer Python 3.8+. Só `--xlsx` precisa do openpyxl (`pip install openpyxl`).
 ```bash
 python pncp_implementos.py                      # propostas que encerram nos próximos 90 dias, Brasil todo
 python pncp_implementos.py --uf GO --dias 30    # só GO, próximos 30 dias
-python pncp_implementos.py --xlsx resultado.xlsx  # planilha com abas: implementos + uma por categoria de obra
-python pncp_implementos.py --csv resultado.csv  # também salva CSV (obras em resultado_obras.csv)
+python pncp_implementos.py --xlsx resultado.xlsx  # 3 planilhas: resultado_implementos.xlsx,
+                                                  # resultado_containers.xlsx, resultado_galpao_obras.xlsx
+python pncp_implementos.py --csv resultado.csv  # o mesmo em CSV (resultado_implementos.csv etc.)
 python pncp_implementos.py --termo "carroceria graneleira"   # termo extra, só nesta execução
 python pncp_implementos.py --termos outro.txt   # usa outro arquivo de termos
 python pncp_implementos.py --incluir-caminhao   # não descarta caminhão + implemento
