@@ -753,7 +753,9 @@ def salvar_xlsx(caminho, implementos, descartados, obras, containers=()):
                 elif isinstance(v, float):
                     x.number_format = '#,##0.00;-#,##0.00;"-"'
                 elif nome.startswith(("Edital", "Sistema")) and v:
-                    x.value, x.hyperlink, x.font = "abrir", v, link
+                    # Excel recusa link com espaço, [ ] e afins: codifica o que não é seguro
+                    url = urllib.parse.quote(v.strip(), safe=":/?&=%#+@,;~!$'()*-._")
+                    x.value, x.hyperlink, x.font = "abrir", url, link
             if fim and (fim - agora).days < 2:
                 for c in range(1, len(colunas) + 1):
                     ws.cell(i, c).fill = amarelo
