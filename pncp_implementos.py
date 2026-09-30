@@ -865,8 +865,9 @@ def salvar_xlsx(caminho, implementos, descartados, obras, containers=(), planeja
          "Implementos rodoviários sem o veículo. Linhas em amarelo: proposta encerra em menos "
          "de 2 dias. Valor 0 ou vazio: sigiloso."),
         ("Caminhão + implemento", comuns_ini + comuns_fim, descartados,
-         "O órgão compra o caminhão já com o implemento (baú, prancha, caçamba, pipa...): quem vence costuma ser a concessionária, que compra o implemento de um fabricante."),
-        ("Compras planejadas (PCA)", [
+         "O órgão compra o caminhão já com o implemento (baú, prancha, caçamba, pipa...): quem vence costuma ser a concessionária, que compra o implemento de um fabricante.")])
+    if planejadas:
+        salvar("compras_planejadas", [("Compras planejadas (PCA)", [
             ("Data desejada", 13, lambda r: r["data_desejada"]),
             ("Com caminhão", 9, lambda r: r["com_caminhao"]),
             ("Categoria", 26, lambda r: r["categoria"]),
