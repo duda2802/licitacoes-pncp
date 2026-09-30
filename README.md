@@ -55,6 +55,16 @@ Se a API de itens falhar, a decisão é feita só pelo objeto e o resultado vem 
 um aviso para conferir no edital. Para ver também os pregões descartados, use
 `--incluir-caminhao`.
 
+## Compras planejadas (PCA)
+
+Além dos editais abertos, o script consulta o Plano de Contratações Anual (PCA) deste
+ano e do próximo: o que os órgãos planejam comprar, com valor e **data desejada**, antes
+de o edital sair. Consulta as classes do catálogo 2330 (reboques), 2510 (componentes de
+carroceria) e 2320 (veículos sobre rodas) (`PCA_CLASSES`) e aplica os mesmos termos e
+regras dos implementos. Vai para a aba **Compras planejadas (PCA)** da planilha de
+implementos (coluna "Com caminhão" indica se é o caminhão já com o implemento).
+`--sem-pca` desliga.
+
 ## Containers
 
 A categoria `CONTAINER / CONTENTOR` de `termos.txt` (container, contêiner,

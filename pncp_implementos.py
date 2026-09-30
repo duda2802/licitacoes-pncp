@@ -692,6 +692,68 @@ def imprimir(resultados):
         print(f"  {n:4d}  {cat}")
 
 
+# --- Compras planejadas (PCA) -----------------------------------------------
+# O Plano de Contratações Anual traz o que cada órgão pretende comprar, com valor e
+# data desejada, antes de o edital sair. É consultado por classe do catálogo.
+API_PCA = "https://pncp.gov.br/api/consulta/v1/pca/"
+PCA_CLASSES = {"2330": "REBOQUES", "2510": "COMPONENTES DE CARROCERIA", "2320": "VEÍCULOS SOBRE RODAS"}
+
+
+def buscar_pca(ano, classe):
+    """Planos (PCA) de um ano e classe do catálogo; cada plano traz seus itens."""
+    pagina = 1
+    while True:
+        try:
+            dados = get_json(API_PCA, {"anoPca": ano, "codigoClassificacaoSuperior": classe,
+                                       "pagina": pagina, "tamanhoPagina": 50}) or {}
+        except ErroAPI as exc:
+            print(f"  PCA {classe}/{ano} página {pagina} falhou: {exc}", file=sys.stderr)
+            return
+        total = dados.get("totalPaginas") or 0
+        print(f"  PCA {classe}/{ano} página {pagina}/{total}", file=sys.stderr)
+        yield from dados.get("data") or []
+        if pagina >= total:
+            return
+        pagina += 1
+
+
+def filtrar_pca(planos, termos, hoje):
+    """Itens planejados de implemento (mesmos termos e regras), com data desejada >= hoje."""
+    vistos = set()
+    for plano in planos:
+        for item in plano.get("itens") or []:
+            if (item.get("dataDesejada") or "9999") < hoje:
+                continue
+            texto = " | ".join(filter(None, [item.get("pdmDescricao"), item.get("descricaoItem"),
+                                             item.get("grupoContratacaoNome")]))
+            encontrados = termos_encontrados(texto, termos)
+            if not encontrados or item_de_servico({"descricao": texto}) or item_agricola(
+                    {"descricao": texto, "valorUnitarioEstimado": item.get("valorUnitario")}, ""):
+                continue
+            chave = (plano.get("idPcaPncp"), item.get("numeroItem"))
+            if chave in vistos:
+                continue
+            vistos.add(chave)
+            cnpj, _, resto = (plano.get("idPcaPncp") or "").partition("-0-")
+            seq, _, ano = resto.partition("/")
+            yield {
+                "data_desejada": item.get("dataDesejada") or "",
+                "com_caminhao": "sim" if inclui_caminhao(texto) else "",
+                "categoria": " | ".join(dict.fromkeys(c for c, _ in encontrados)),
+                "orgao": plano.get("orgaoEntidadeRazaoSocial") or "",
+                "unidade": plano.get("nomeUnidade") or "",
+                "item": item.get("pdmDescricao") or "",
+                "descricao": " ".join((item.get("descricaoItem") or "").split()),
+                "grupo": item.get("grupoContratacaoNome") or "",
+                "quantidade": item.get("quantidadeEstimada"),
+                "valor_total": item.get("valorTotal"),
+                "ano_pca": plano.get("anoPca"),
+                "termos": ", ".join(t for _, t in encontrados),
+                "link_pca": (f"https://pncp.gov.br/app/pca/{cnpj}/{ano}/{int(seq)}"
+                             if cnpj and seq.isdigit() and ano else ""),
+            }
+
+
 def filtrar_obras(contratacoes, termos_obras, agora):
     """Contratações de obra/estrutura (termos_obras.txt), cada uma com sua aba."""
     vistos = set()
@@ -713,7 +775,7 @@ def filtrar_obras(contratacoes, termos_obras, agora):
             yield r
 
 
-def salvar_xlsx(caminho, implementos, descartados, obras, containers=()):
+def salvar_xlsx(caminho, implementos, descartados, obras, containers=(), planejadas=()):
     """Três planilhas Excel separadas, uma por filtro: <base>_implementos.xlsx
     (implementos + descartados com veículo), <base>_containers.xlsx e
     <base>_galpao_obras.xlsx (uma aba, grupo na coluna). Requer openpyxl."""
@@ -759,7 +821,7 @@ def salvar_xlsx(caminho, implementos, descartados, obras, containers=()):
                     x.number_format = "dd/mm/yyyy hh:mm"
                 elif isinstance(v, float):
                     x.number_format = '#,##0.00;-#,##0.00;"-"'
-                elif nome.startswith(("Edital", "Sistema")) and v:
+                elif nome.startswith(("Edital", "Sistema", "Plano")) and v:
                     # Excel recusa link com espaço, [ ] e afins: codifica o que não é seguro
                     url = urllib.parse.quote(v.strip(), safe=":/?&=%#+@,;~!$'()*-._")
                     x.value, x.hyperlink, x.font = "abrir", url, link
@@ -803,7 +865,25 @@ def salvar_xlsx(caminho, implementos, descartados, obras, containers=()):
          "Implementos rodoviários sem o veículo. Linhas em amarelo: proposta encerra em menos "
          "de 2 dias. Valor 0 ou vazio: sigiloso."),
         ("Caminhão + implemento", comuns_ini + comuns_fim, descartados,
-         "O órgão compra o caminhão já com o implemento (baú, prancha, caçamba, pipa...): quem vence costuma ser a concessionária, que compra o implemento de um fabricante.")])
+         "O órgão compra o caminhão já com o implemento (baú, prancha, caçamba, pipa...): quem vence costuma ser a concessionária, que compra o implemento de um fabricante."),
+        ("Compras planejadas (PCA)", [
+            ("Data desejada", 13, lambda r: r["data_desejada"]),
+            ("Com caminhão", 9, lambda r: r["com_caminhao"]),
+            ("Categoria", 26, lambda r: r["categoria"]),
+            ("Órgão", 36, lambda r: r["orgao"]),
+            ("Unidade", 30, lambda r: r["unidade"]),
+            ("Item", 26, lambda r: r["item"]),
+            ("Descrição", 60, lambda r: r["descricao"]),
+            ("Grupo da contratação", 40, lambda r: r["grupo"]),
+            ("Quantidade", 10, lambda r: num(r["quantidade"])),
+            ("Valor total (R$)", 16, lambda r: num(r["valor_total"])),
+            ("Ano do plano", 8, lambda r: r["ano_pca"]),
+            ("Termos encontrados", 30, lambda r: r["termos"]),
+            ("Plano no PNCP", 11, lambda r: r["link_pca"])],
+         sorted(planejadas, key=lambda r: r["data_desejada"]),
+         "Plano de Contratações Anual (PCA): o que os órgãos planejam comprar, antes de o edital "
+         "sair. 'Data desejada' é a previsão do órgão; o edital pode sair antes ou depois. "
+         "Link abre o plano do órgão no PNCP.")])
     salvar("containers", [
         ("Containers", comuns_ini + colunas_itens + comuns_fim, containers,
          "Compra de container/contentor (lixo, PEAD, metálico...). Locação e serviço ficam de "
@@ -846,6 +926,8 @@ def main():
                     help="termo extra a procurar no objeto, além do arquivo (pode repetir)")
     ap.add_argument("--termos-obras", default=str(ARQUIVO_TERMOS_OBRAS),
                     help="arquivo de termos de obras/estruturas (padrão: termos_obras.txt)")
+    ap.add_argument("--sem-pca", action="store_true",
+                    help="não consulta as compras planejadas (PCA) deste ano e do próximo")
     ap.add_argument("--sem-obras", action="store_true",
                     help="não procura obras/estruturas, só implementos")
     ap.add_argument("--csv", help="também salva CSV: <nome>_implementos.csv, "
@@ -908,10 +990,20 @@ def main():
             salvar_csv(containers, f"{base}_containers.csv")
         if obras:
             salvar_csv(obras, f"{base}_galpao_obras.csv")
+    planejadas = []
+    if not args.sem_pca:
+        print("Consultando compras planejadas (PCA)...", file=sys.stderr)
+        planos = (pl for ano in (date.today().year, date.today().year + 1)
+                  for classe in PCA_CLASSES for pl in buscar_pca(ano, classe))
+        planejadas = list(filtrar_pca(planos, termos, date.today().isoformat()))
+        print(f"\nCompras planejadas (PCA): {len(planejadas)} item(ns) de implemento "
+              f"(lista completa com --xlsx ou --csv)")
+        if args.csv:
+            salvar_csv(planejadas, str(Path(args.csv).with_suffix("")) + "_planejadas.csv")
     if args.xlsx:
         salvar_xlsx(args.xlsx, resultados,
                     [montar_resultado(d, termos_encontrados(d.get("objetoCompra"), termos))
-                     for d in descartados], obras, containers)
+                     for d in descartados], obras, containers, planejadas)
 
 
 if __name__ == "__main__":

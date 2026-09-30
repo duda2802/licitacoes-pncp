@@ -52,6 +52,7 @@ coletor compactador
 compactador de lixo
 caminhão de lixo
 caminhão coletor
+caminhão compactador
 caixa compactadora
 limpa fossa
 equipamento de hidrojato
@@ -64,6 +65,11 @@ lifter
 caçamba basculante
 caminhão basculante
 caminhão caçamba
+caminhão toco basculante
+caminhão truck basculante
+caminhão trucado basculante
+6x4 basculante
+caçamba de empurre
 carroceria basculante
 semirreboque basculante
 reboque basculante
@@ -122,6 +128,8 @@ baú refrigerado
 baú fechado
 baú comum
 baú seco
+caminhão com câmara fria
+caminhão frigorífico
 equipado com carroceria
 carroceria aberta
 baú frigorífico
