@@ -111,6 +111,7 @@ carroceria com cesto aéreo
 carroceria carga seca
 carroceria de carga
 carroceria baú
+carroceria sider
 baú frigorífico
 baú isotérmico
 baú de carga

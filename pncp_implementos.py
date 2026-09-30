@@ -81,7 +81,8 @@ def termo_para_regex(termo):
     palavras = normalizar(termo).split()
     # preposições do termo viram opcionais ("em chassi" casa "no chassi")
     palavras = [p for p in palavras if p not in PREPOSICOES] or palavras
-    sep = r"\s+(?:(?:" + "|".join(PREPOSICOES) + r")\s+)?"
+    # até duas: "carroceria do tipo sider" casa "carroceria sider"
+    sep = r"\s+(?:(?:" + "|".join(PREPOSICOES) + r")\s+){0,2}"
     return re.compile(r"\b" + sep.join(palavra_para_regex(p) for p in palavras))
 
 
@@ -285,6 +286,8 @@ ANTES_DE_DESTINO = {"chassi", "chassis", "sobrechassi", "modelo", "modelos", "ma
                     "implementos", "transporte", "remocao", "reboque", "guincho",
                     "guinchamento", "resgate", "socorro", "recolhimento", "abastecimento",
                     "lavagem", "rocadeira", "rocadeiras", "grade", "arado", "potencia"}
+IMPLEMENTO_SEM_PREPOSICAO = {"carroceria", "carrocerias", "cacamba", "cacambas", "bau", "baus",
+                             "implemento", "implementos"}
 # "... com caminhão" só é destino depois destas ("compatível com trator")
 ANTES_DE_COM = {"compativel", "compativeis", "compatibilidade", "adaptavel", "adaptaveis",
                 "acoplavel", "acoplaveis", "uso", "utilizacao", "engate"}
@@ -323,6 +326,10 @@ def inclui_caminhao(texto):
         if anterior in DESTINO:
             continue
         if anterior == "de" and antes_anterior in ANTES_DE_DESTINO:
+            continue
+        # nome do catálogo sem preposição: "Carroceria Madeira Caminhão", "Baú Caminhão"
+        if anterior in IMPLEMENTO_SEM_PREPOSICAO or (
+                antes_anterior in IMPLEMENTO_SEM_PREPOSICAO and anterior not in ("com", "e", "ou", "sendo")):
             continue
         if anterior == "com" and antes_anterior in ANTES_DE_COM:
             continue
