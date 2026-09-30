@@ -100,6 +100,9 @@ semirreboque prancha
 prancha carrega tudo
 carrega tudo
 prancha rodoviária
+equipado com prancha
+caminhão com prancha
+guincho de arraste
 carroceria plataforma
 asa delta
 
@@ -112,6 +115,15 @@ carroceria carga seca
 carroceria de carga
 carroceria baú
 carroceria sider
+caminhão baú
+caminhão com baú
+equipado com baú
+baú refrigerado
+baú fechado
+baú comum
+baú seco
+equipado com carroceria
+carroceria aberta
 baú frigorífico
 baú isotérmico
 baú de carga

@@ -802,8 +802,8 @@ def salvar_xlsx(caminho, implementos, descartados, obras, containers=()):
         ("Implementos", comuns_ini + colunas_itens + comuns_fim, implementos,
          "Implementos rodoviários sem o veículo. Linhas em amarelo: proposta encerra em menos "
          "de 2 dias. Valor 0 ou vazio: sigiloso."),
-        ("Com veículo (descartados)", comuns_ini + comuns_fim, descartados,
-         "Compras do caminhão/caminhonete junto com o implemento. Para conferência.")])
+        ("Caminhão + implemento", comuns_ini + comuns_fim, descartados,
+         "O órgão compra o caminhão já com o implemento (baú, prancha, caçamba, pipa...): quem vence costuma ser a concessionária, que compra o implemento de um fabricante.")])
     salvar("containers", [
         ("Containers", comuns_ini + colunas_itens + comuns_fim, containers,
          "Compra de container/contentor (lixo, PEAD, metálico...). Locação e serviço ficam de "
