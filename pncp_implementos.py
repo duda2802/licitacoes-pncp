@@ -65,8 +65,14 @@ def normalizar(texto):
     return " ".join(re.sub(r"[^a-z0-9]+", " ", sem_acento).split())
 
 
+# prefixos que valem só como palavra inteira: "semi reboque" não casa "semirrígido, reboque"
+PALAVRAS_EXATAS = {"semi"}
+
+
 def palavra_para_regex(palavra):
     """Aceita plural e sufixos: caminhao -> caminhoes, combustivel -> combustiveis."""
+    if palavra in PALAVRAS_EXATAS:
+        return re.escape(palavra) + r"\b"
     if palavra.endswith("ao"):
         raiz = re.escape(palavra[:-2]) + "(?:ao|oes|aes)"
     elif len(palavra) > 3 and palavra[-1] == "l" and palavra[-2] in "aeiou":
