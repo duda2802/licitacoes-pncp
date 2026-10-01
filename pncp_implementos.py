@@ -782,6 +782,18 @@ def filtrar_obras(contratacoes, termos_obras, agora):
             yield r
 
 
+def texto_para_excel(v):
+    """Tira o que o Excel rejeita: caracteres de controle e os C1 (0x80-0x9F) que vêm
+    de texto Windows-1252 mal convertido no PNCP ("\x96" vira "–")."""
+    def c1(m):
+        try:
+            return bytes([ord(m.group(0))]).decode("cp1252")
+        except UnicodeDecodeError:
+            return " "
+    v = re.sub(r"[\x80-\x9f]", c1, v)
+    return re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f\ufffe\uffff]", " ", v)
+
+
 def salvar_xlsx(caminho, implementos, descartados, obras, containers=(), planejadas=()):
     """Três planilhas Excel separadas, uma por filtro: <base>_implementos.xlsx
     (implementos + descartados com veículo), <base>_containers.xlsx e
@@ -820,7 +832,7 @@ def salvar_xlsx(caminho, implementos, descartados, obras, containers=(), planeja
             for c, (nome, largura, campo) in enumerate(colunas, 1):
                 v = campo(r)
                 if isinstance(v, str):  # textos do PNCP às vezes trazem caracteres de controle
-                    v = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", " ", v)
+                    v = texto_para_excel(v)
                 x = ws.cell(i, c, v)
                 x.font = base
                 x.alignment = Alignment(wrap_text=largura >= 30, vertical="top")
@@ -921,7 +933,8 @@ def salvar_csv(resultados, caminho):
     with open(caminho, "w", newline="", encoding="utf-8-sig") as f:
         w = csv.DictWriter(f, fieldnames=campos, delimiter=";")
         w.writeheader()
-        w.writerows(resultados)
+        w.writerows({k: texto_para_excel(v) if isinstance(v, str) else v for k, v in r.items()}
+                    for r in resultados)
     print(f"CSV salvo em {caminho}", file=sys.stderr)
 
 
