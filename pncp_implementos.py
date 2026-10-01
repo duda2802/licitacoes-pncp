@@ -839,7 +839,11 @@ def salvar_xlsx(caminho, implementos, descartados, obras, containers=(), planeja
         x = ws.cell(len(linhas) + 3, 1, nota)
         x.font = Font(name="Arial", size=9, italic=True, color="595959")
 
-    comuns_ini = [("Encerra proposta", 17, lambda r: parse_data(r["encerramento_proposta"])),
+    # coluna "Novo hoje" só aparece se os resultados vierem marcados (chave "novo")
+    novo = ([("Novo hoje", 9, lambda r: r.get("novo", ""))]
+            if any("novo" in r for r in list(implementos) + list(descartados) + list(obras)
+                   + list(containers)) else [])
+    comuns_ini = novo + [("Encerra proposta", 17, lambda r: parse_data(r["encerramento_proposta"])),
                   ("Modalidade", 16, lambda r: r["modalidade"]),
                   ("Categoria", 26, lambda r: r["categoria"]),
                   ("Órgão", 36, lambda r: r["orgao"]),
@@ -875,7 +879,8 @@ def salvar_xlsx(caminho, implementos, descartados, obras, containers=(), planeja
          "O órgão compra o caminhão já com o implemento (baú, prancha, caçamba, pipa...): quem vence costuma ser a concessionária, que compra o implemento de um fabricante.")])
     if planejadas:
         salvar("compras_planejadas", [("Compras planejadas (PCA)", [
-            ("Data desejada", 13, lambda r: r["data_desejada"]),
+            ("Novo hoje", 9, lambda r: r.get("novo", "")),
+            ("Data desejada", 13, lambda r: "/".join(reversed(r["data_desejada"].split("-")))),
             ("Com caminhão", 9, lambda r: r["com_caminhao"]),
             ("Categoria", 26, lambda r: r["categoria"]),
             ("Órgão", 36, lambda r: r["orgao"]),
