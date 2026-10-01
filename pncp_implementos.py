@@ -462,7 +462,8 @@ RE_AGRICOLA = re.compile(r"\b(?:agricol|tratorizad|tratorad|recolhedor|colhedo|c
                          r"|ensiladeira|forrage|carretinha|calcario|adubo|fertilizant)\w*")
 # Fora do escopo por outro motivo: container de esterilização/laboratório, de TI.
 RE_FORA_DO_ESCOPO = re.compile(
-    r"\b(?:esteriliza|cirurgic|hospitala|laborator|amostra|kubernetes|docker|openshift)\w*")
+    r"\b(?:esteriliza|cirurgic|hospitala|laborator|amostra|kubernetes|docker|openshift"
+    r"|bote|botes|embarcac|lancha|nautic)\w*")
 # objeto de instrumental médico/odontológico: "caixa tipo container" ali não conta
 RE_OBJETO_FORA_DO_ESCOPO = re.compile(
     r"\b(?:instrumenta\w*|cirurgic\w*|esteriliza\w*|odontolog\w*)")
