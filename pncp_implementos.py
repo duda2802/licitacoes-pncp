@@ -871,7 +871,7 @@ def salvar_xlsx(caminho, implementos, descartados, obras, containers=(), planeja
         ("Valor dos itens (R$)", 16, lambda r: num(r["valor_itens_implemento"])),
         ("Itens", 70, lambda r: r["itens_implemento"].replace(" || ", "\n")),
         ("Conferência", 20, lambda r: r["verificacao_caminhao"])]
-    base = str(caminho)[:-5] if str(caminho).lower().endswith(".xlsx") else str(caminho)
+    prefixo = str(caminho)[:-5] if str(caminho).lower().endswith(".xlsx") else str(caminho)
     arquivos = []
 
     def salvar(sufixo, abas):
@@ -879,7 +879,7 @@ def salvar_xlsx(caminho, implementos, descartados, obras, containers=(), planeja
         wb.remove(wb.active)
         for args in abas:
             aba(wb, *args)
-        nome = f"{base}_{sufixo}.xlsx"
+        nome = f"{prefixo}_{sufixo}.xlsx"
         wb.save(nome)
         arquivos.append(nome)
 
