@@ -35,6 +35,15 @@ from pathlib import Path
 
 API_URL = "https://pncp.gov.br/api/consulta/v1/contratacoes/proposta"
 API_ITENS = "https://pncp.gov.br/api/pncp/v1/orgaos/{cnpj}/compras/{ano}/{seq}/itens"
+# Busca do site do PNCP: procura também no texto dos itens. Acha os editais de objeto
+# genérico ("aquisição de caminhões", "material de limpeza") em que o implemento ou o
+# container só aparece nos itens.
+API_BUSCA = "https://pncp.gov.br/api/search/"
+TERMOS_BUSCA_SITE = [
+    "basculante", "pipa", "poliguindaste", "prancha", "carroceria", "baú", "semirreboque",
+    "semi-reboque", "implemento", "munck", "cesto aéreo", "coletor compactador",
+    "comboio", "melosa", "auto socorro", "container", "contêiner", "conteiner",
+    "contentor", "hidrojato", "limpa fossa", "isotérmico", "rodotrem", "graneleiro"]
 # Modalidades consultadas (código PNCP): pregão, concorrência e dispensa.
 MODALIDADES = {6: "Pregão eletrônico", 7: "Pregão presencial", 4: "Concorrência eletrônica",
                5: "Concorrência presencial", 8: "Dispensa"}
@@ -187,6 +196,29 @@ def objeto_generico(objeto):
         ocorrencia_de_compra(obj, m.start()) for m in RE_GATILHO.finditer(obj))
 
 
+# Busca do site: o objeto tem de ser compra ("aquisição de veículos", "material de
+# limpeza"), não serviço, obra, peças, locação nem brinquedo/livro.
+RE_OBJETO_DE_COMPRA = re.compile(r"\b(?:aquisic|compra|fornecimento|registro de preco)|^\W*(?:veiculos?|caminho(?:es|ao))\b")
+RE_OBJETO_NAO_COMPRA = re.compile(
+    r"\b(?:servicos?|execuc|obras?|engenharia|pecas|manutenc|transporte|locac|aluguel"
+    r"|contratacao de empresas?(?: \w+){0,2} para (?!(?:o |a |futura |eventual |e )*(?:fornecimento|aquisic))|brinquedos?|pedagogic|didatic|ludic|livros?"
+    r"|agua potavel|lavagem)\w*")
+
+
+# "fornecimento de peças, componentes ... para máquinas": não é compra do implemento
+RE_PECAS = re.compile(r"\bpecas\b")
+# a partir daqui o objeto só nomeia quem pede ("demandas da Secretaria de Obras e
+# Serviços"), o que não diz se é compra
+RE_QUEM_PEDE = re.compile(r"\b(?:secretari|departament|diretori|demandas?|orgaos? demandantes"
+                          r"|fundo municipal|setor|destinad)\w*")
+
+
+def objeto_de_compra(objeto):
+    """True se o objeto é compra de bens (critério da busca do site, ver TERMOS_BUSCA_SITE)."""
+    obj = RE_QUEM_PEDE.split(normalizar(objeto), 1)[0]
+    return bool(RE_OBJETO_DE_COMPRA.search(obj)) and not RE_OBJETO_NAO_COMPRA.search(obj)
+
+
 def termos_encontrados(objeto, termos):
     """Lista de (categoria, termo) cujo termo aparece no objeto como coisa comprada."""
     obj = normalizar(objeto)
@@ -318,7 +350,9 @@ def inclui_caminhao(texto):
     t = normalizar(texto)
     if RE_CHASSI_JUNTO.search(t):
         return True
-    if RE_VEICULO_DO_ORGAO.search(t):
+    # "caminhão fornecido pela Prefeitura" (não "layout fornecido pela contratante")
+    if any(RE_VEICULO.search(t[max(0, m.start() - 60):m.start()])
+           for m in RE_VEICULO_DO_ORGAO.finditer(t)):
         return False
     fim_destino = None  # fim da última menção que era destino
     for m in RE_VEICULO.finditer(t):
@@ -448,6 +482,27 @@ def buscar_itens(compra, tamanho=50):
         return None
 
 
+def buscar_no_site(termos=TERMOS_BUSCA_SITE, paginas=30):
+    """numeroControlePNCP dos editais com proposta aberta que a busca do site do PNCP
+    acha pelos termos (no objeto ou nos itens). Termo que falhar é pulado."""
+    achados = set()
+    for termo in termos:
+        for pagina in range(1, paginas + 1):
+            params = {"q": termo, "tipos_documento": "edital", "ordenacao": "-data",
+                      "pagina": pagina, "tam_pagina": 100, "status": "recebendo_proposta"}
+            try:
+                dados = get_json(API_BUSCA, params) or {}
+            except ErroAPI as exc:
+                print(f"  busca do site falhou para '{termo}' ({exc})", file=sys.stderr)
+                break
+            itens = dados.get("items") or []
+            achados.update(i.get("numero_controle_pncp") for i in itens)
+            if len(itens) < 100 or pagina * 100 >= (dados.get("total") or 0):
+                break
+    achados.discard(None)
+    return achados
+
+
 RE_LOCACAO = re.compile(r"\b(?:locac\w*|aluguel|alugueis|comodato|concessao)\b")
 RE_SERVICO_OBJETO = re.compile(r"^(?:\w+ ){0,6}(?:transporte|coleta|servicos?|prestacao)\b")
 
@@ -474,6 +529,26 @@ RE_FORA_DO_ESCOPO = re.compile(
 # objeto de instrumental médico/odontológico: "caixa tipo container" ali não conta
 RE_OBJETO_FORA_DO_ESCOPO = re.compile(
     r"\b(?:instrumenta\w*|cirurgic\w*|esteriliza\w*|odontolog\w*)")
+# itens de objeto genérico que usam um termo sem ser implemento: brinquedo ("caminhão
+# basculante de plástico"), caixa organizadora "tipo container", produto "em container",
+# spray de pimenta (espargidor), e van/picape/ambulância com "carroceria baú/aberta"
+RE_ITEM_FORA = re.compile(
+    r"\b(?:brinquedos?|infantil|miniatura|plastico resistente|caixas?|hipoclorito"
+    r"|agua sanitaria|desinfetante|pimenta|livros?|balancas?|domestico)\b"
+    r"|transporte (?:com|em|por) caminh")
+# recipiente pequeno ("container plástico com alça 20 litros"), nas primeiras palavras
+RE_ITEM_PEQUENO = re.compile(r"\b\d{1,2} ?(?:litros?|l|lts)\b")
+RE_ITEM_OUTRO_VEICULO = re.compile(
+    r"^(?:\W*\d+\W*)?(?:veiculo (?:tipo )?)?(?:vans?|pick ?ups?|picapes?|caminhonetes?|ambulancias?)\b")
+
+
+def item_fora(item):
+    desc = normalizar(item.get("descricao"))
+    inicio = " ".join(desc.split()[:20])  # o nome do item, não a especificação
+    return bool(RE_ITEM_FORA.search(inicio) or RE_ITEM_OUTRO_VEICULO.search(desc)
+                or RE_ITEM_PEQUENO.search(" ".join(desc.split()[:PALAVRAS_INICIO_ITEM])))
+
+
 RE_OBJETO_AGRICOLA = re.compile(r"\b(?:agricol|agropecuari|patrulha|forrage|lavoura)\w*")
 # no objeto genérico o termo tem de estar no começo do item: "Tanque pipa 8.000 L",
 # não "Cortador de piso ... com tanque de água"
@@ -530,7 +605,7 @@ def avaliar_itens(compra, termos, so_com_termo=False):
     itens = buscar_itens(compra)
     if so_com_termo:
         com_termo = [i for i in itens or [] if termo_no_inicio(i.get("descricao"), termos)
-                     and not item_de_servico(i)]
+                     and not item_de_servico(i) and not item_fora(i)]
         nao_agricola = [i for i in com_termo if not item_agricola(i, objeto)]
         if com_termo and not nao_agricola:
             return False, [], "agrícola"
@@ -629,7 +704,10 @@ def montar_resultado(item, encontrados, itens_implemento=(), verificacao=""):
     }
 
 
-def filtrar(itens, termos, agora, incluir_caminhao=False, descartados=None):
+def filtrar(itens, termos, agora, incluir_caminhao=False, descartados=None,
+            achados_site=frozenset()):
+    """`achados_site`: editais que a busca do site achou pelos itens (buscar_no_site);
+    se o objeto for compra, os itens são conferidos como num objeto genérico."""
     vistos = set()
     for item in itens:
         chave = item.get("numeroControlePNCP")
@@ -642,7 +720,10 @@ def filtrar(itens, termos, agora, incluir_caminhao=False, descartados=None):
             continue
         encontrados = termos_encontrados(item.get("objetoCompra"), termos)
         if not encontrados:
-            if not objeto_generico(item.get("objetoCompra")):
+            objeto = item.get("objetoCompra")
+            if RE_PECAS.search(" ".join(normalizar(objeto).split()[:12])) or not (
+                    objeto_generico(objeto)
+                    or (chave in achados_site and objeto_de_compra(objeto))):
                 continue
             aceita, itens_impl, verificacao = avaliar_itens(item, termos, so_com_termo=True)
             if not itens_impl:  # nenhum item usa os termos, ou só itens agrícolas
@@ -652,7 +733,7 @@ def filtrar(itens, termos, agora, incluir_caminhao=False, descartados=None):
             if aceita or incluir_caminhao:
                 yield montar_resultado(item, encontrados, itens_impl, verificacao)
             elif descartados is not None:
-                descartados.append(item)
+                descartados.append({**item, "_encontrados": encontrados, "_itens": itens_impl})
             continue
         if incluir_caminhao:
             yield montar_resultado(item, encontrados, verificacao="desligada")
@@ -961,6 +1042,8 @@ def main():
                                   "<nome>_containers.csv e <nome>_galpao_obras.csv")
     ap.add_argument("--xlsx", help="salva 3 planilhas Excel: <nome>_implementos.xlsx, "
                                    "<nome>_containers.xlsx e <nome>_galpao_obras.xlsx (requer openpyxl)")
+    ap.add_argument("--sem-busca-site", action="store_true",
+                    help="não usa a busca do site do PNCP (que acha o implemento nos itens)")
     ap.add_argument("--incluir-caminhao", action="store_true",
                     help="não descarta pregões que compram o caminhão junto com o implemento")
     args = ap.parse_args()
@@ -981,9 +1064,14 @@ def main():
             yield from buscar_contratacoes(data_final, args.uf, paginas_falhas, mod)
 
     contratacoes = list(todas_as_modalidades())
+    achados_site = set()
+    if not args.sem_busca_site:
+        print("Consultando a busca do site do PNCP (termos nos itens)...", file=sys.stderr)
+        achados_site = buscar_no_site()
     agora = datetime.now()
     descartados = []
-    resultados = list(filtrar(contratacoes, termos, agora, args.incluir_caminhao, descartados))
+    resultados = list(filtrar(contratacoes, termos, agora, args.incluir_caminhao, descartados,
+                              achados_site))
     resultados.sort(key=lambda r: r["encerramento_proposta"] or "")
     obras = []
     if not args.sem_obras and Path(args.termos_obras).exists():
@@ -1029,7 +1117,9 @@ def main():
             salvar_csv(planejadas, str(Path(args.csv).with_suffix("")) + "_planejadas.csv")
     if args.xlsx:
         salvar_xlsx(args.xlsx, resultados,
-                    [montar_resultado(d, termos_encontrados(d.get("objetoCompra"), termos))
+                    [montar_resultado(d, d.get("_encontrados")
+                                      or termos_encontrados(d.get("objetoCompra"), termos),
+                                      d.get("_itens") or ())
                      for d in descartados], obras, containers, planejadas)
 
 

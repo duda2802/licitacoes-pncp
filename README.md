@@ -16,6 +16,20 @@ Objetos genéricos ("aquisição de máquinas e equipamentos", "patrulha mecaniz
 pregão entra se algum item usar um termo ("Tanque pipa 8.000 L"). Os padrões
 que disparam essa conferência estão em `RE_GATILHO` no script.
 
+## Busca do site do PNCP (termo só nos itens)
+
+A consulta de propostas abertas só traz o objeto. Muitos editais têm objeto genérico
+("aquisição de caminhões", "aquisição de veículos", "material de limpeza") e o
+implemento ou container aparece só nos itens ("CAMINHÃO - CARROCERIA: CAÇAMBA
+BASCULANTE", "Contentor de lixo 1000 L PEAD"). Por isso o script também usa a busca
+do site do PNCP (`/api/search/`, a mesma da tela de editais), que procura no texto dos
+itens, com os termos de `TERMOS_BUSCA_SITE`. Para cada edital achado ali cujo objeto
+seja compra de bens (não serviço, obra, peças, locação, brinquedo/livro), os itens são
+conferidos como num objeto genérico. Ficam de fora brinquedos ("caminhão basculante de
+plástico"), caixa organizadora "tipo container", produto "em container" e
+van/picape/ambulância com "carroceria baú" (`RE_ITEM_FORA`, `RE_ITEM_OUTRO_VEICULO`).
+`--sem-busca-site` desliga.
+
 Para cada contratação mostra: **categoria**, modalidade, órgão, município/UF, valor estimado,
 data de encerramento da proposta, termos encontrados e link do edital no PNCP
 (mais o link do sistema de origem).
