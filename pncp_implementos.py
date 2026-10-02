@@ -122,6 +122,7 @@ def carregar_termos(caminho):
 NAO_E_COMPRA = {
     "locacao", "locacoes", "aluguel", "servico", "servicos", "prestacao", "prestados",
     "manutencao", "manutencoes", "reparo", "reparos", "conserto", "consertos", "revisao",
+    "reforma", "reformas",
     "peca", "pecas", "componente", "componentes", "acessorio", "acessorios",
     "lubrificante", "lubrificantes", "graxa", "exposicao", "concessao",
     "aplicacao", "pneu", "pneus", "camara", "camaras", "combustivel", "combustiveis",
