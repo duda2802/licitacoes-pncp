@@ -138,6 +138,7 @@ NAO_E_COMPRA = {
     "oleo", "oleos", "filtro", "filtros", "bateria", "baterias",
     "placa", "placas", "emplacamento", "licenciamento", "fretamento", "frete",
     "adesivo", "adesivos", "etiqueta", "etiquetas",
+    "treinamento", "treinamentos", "curso", "cursos", "capacitacao",
 }
 COMPRA = {"aquisicao", "aquisicoes", "compra", "compras", "adquirir"}
 JANELA = 20
@@ -161,6 +162,12 @@ def ocorrencia_de_compra(texto_normalizado, inicio):
             antes[-1] in ANTES_DE_GENERICO_DESTINO
             or ({"para", "p"} & set(antes[-3:]) and not COMPRA & set(antes[-3:]))):
         return False  # "... para caminhões e implementos rodoviários"
+    # "botão compatível com o veículo caminhão basculante": peça para o veículo
+    if {"compativel", "compativeis"} & set(antes[-4:]):
+        return False
+    # "fornecimento de bebedouros, contêineres e aramado em regime de comodato"
+    if "comodato" in texto_normalizado[inicio:].split()[:10]:
+        return False
     janela = antes[-JANELA:]
     for k in range(len(janela) - 1, -1, -1):
         palavra = janela[k]
@@ -534,7 +541,8 @@ RE_OBJETO_FORA_DO_ESCOPO = re.compile(
 # spray de pimenta (espargidor), e van/picape/ambulância com "carroceria baú/aberta"
 RE_ITEM_FORA = re.compile(
     r"\b(?:brinquedos?|infantil|miniatura|plastico resistente|caixas?|hipoclorito"
-    r"|agua sanitaria|desinfetante|pimenta|livros?|balancas?|domestico)\b"
+    r"|agua sanitaria|desinfetante|pimenta|livros?|balancas?|domestico|garfos?|plugues?)\b"
+    r"|\bcaminh\w* (?:\w+ ){0,4}de plastico"
     r"|transporte (?:com|em|por) caminh")
 # recipiente pequeno ("container plástico com alça 20 litros"), nas primeiras palavras
 RE_ITEM_PEQUENO = re.compile(r"\b\d{1,2} ?(?:litros?|l|lts)\b")
