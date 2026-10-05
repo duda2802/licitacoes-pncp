@@ -117,6 +117,13 @@ cesto aéreo
 caminhão cesto aéreo
 caminhão com cesto aéreo
 carroceria com cesto aéreo
+cesta aérea
+cesto elevatório
+cesta elevatória
+cesto isolado
+plataforma aérea
+lança elevatória
+caminhão linha viva
 carroceria carga seca
 carroceria de carga
 carroceria baú

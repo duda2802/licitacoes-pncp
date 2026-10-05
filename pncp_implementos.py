@@ -42,7 +42,8 @@ API_BUSCA = "https://pncp.gov.br/api/search/"
 TERMOS_BUSCA_SITE = [
     "basculante", "pipa", "poliguindaste", "prancha", "carroceria", "baú", "semirreboque",
     "semi-reboque", "implemento", "munck", "cesto aéreo", "coletor compactador",
-    "comboio", "melosa", "auto socorro", "container", "contêiner", "conteiner",
+    "comboio", "melosa", "auto socorro", "cesta aérea", "cesto elevatório",
+    "plataforma aérea", "lança elevatória", "linha viva", "container", "contêiner", "conteiner",
     "contentor", "hidrojato", "limpa fossa", "isotérmico", "rodotrem", "graneleiro"]
 # Modalidades consultadas (código PNCP): pregão, concorrência e dispensa.
 MODALIDADES = {6: "Pregão eletrônico", 7: "Pregão presencial", 4: "Concorrência eletrônica",
