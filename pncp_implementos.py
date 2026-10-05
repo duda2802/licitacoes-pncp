@@ -540,21 +540,27 @@ RE_OBJETO_FORA_DO_ESCOPO = re.compile(
 # basculante de plástico"), caixa organizadora "tipo container", produto "em container",
 # spray de pimenta (espargidor), e van/picape/ambulância com "carroceria baú/aberta"
 RE_ITEM_FORA = re.compile(
-    r"\b(?:brinquedos?|infantil|miniatura|plastico resistente|caixas?|hipoclorito"
-    r"|agua sanitaria|desinfetante|pimenta|livros?|balancas?|domestico|garfos?|plugues?)\b"
+    r"\b(?:brinquedos?|infantil|miniatura|plastico resistente)\b"
     r"|\bcaminh\w* (?:\w+ ){0,4}de plastico"
     r"|transporte (?:com|em|por) caminh")
+# no nome do item (primeiras palavras), não na especificação ("caixa de chorume")
+RE_ITEM_FORA_NOME = re.compile(
+    r"\b(?:caixas?|hipoclorito|agua sanitaria|desinfetante|pimenta|livros?|balancas?"
+    r"|domestico|garfos?|plugues?|defensivos?|spray)\b")
 # recipiente pequeno ("container plástico com alça 20 litros"), nas primeiras palavras
 RE_ITEM_PEQUENO = re.compile(r"\b\d{1,2} ?(?:litros?|l|lts)\b")
 RE_ITEM_OUTRO_VEICULO = re.compile(
-    r"^(?:\W*\d+\W*)?(?:veiculo (?:tipo )?)?(?:vans?|pick ?ups?|picapes?|caminhonetes?|ambulancias?)\b")
+    r"^(?:\W*\d+\W*)?(?:veiculo (?:tipo )?)?(?:vans?|pick ?ups?|picapes?|caminhonetes?|ambulancias?)\b"
+    r"|^(?:\W*\d+\W*)?veiculo (?:tipo )?furgao\b")
 
 
 def item_fora(item):
     desc = normalizar(item.get("descricao"))
-    inicio = " ".join(desc.split()[:20])  # o nome do item, não a especificação
-    return bool(RE_ITEM_FORA.search(inicio) or RE_ITEM_OUTRO_VEICULO.search(desc)
-                or RE_ITEM_PEQUENO.search(" ".join(desc.split()[:PALAVRAS_INICIO_ITEM])))
+    palavras = desc.split()
+    return bool(RE_ITEM_FORA.search(" ".join(palavras[:20]))
+                or RE_ITEM_FORA_NOME.search(" ".join(palavras[:8]))
+                or RE_ITEM_OUTRO_VEICULO.search(desc)
+                or RE_ITEM_PEQUENO.search(" ".join(palavras[:10])))
 
 
 RE_OBJETO_AGRICOLA = re.compile(r"\b(?:agricol|agropecuari|patrulha|forrage|lavoura)\w*")
@@ -824,7 +830,8 @@ def filtrar_pca(planos, termos, hoje):
             texto = " | ".join(filter(None, [item.get("pdmDescricao"), item.get("descricaoItem"),
                                              item.get("grupoContratacaoNome")]))
             encontrados = termos_encontrados(texto, termos)
-            if not encontrados or item_de_servico({"descricao": texto}) or item_agricola(
+            if not encontrados or item_de_servico({"descricao": texto}) or item_fora(
+                    {"descricao": texto}) or item_agricola(
                     {"descricao": texto, "valorUnitarioEstimado": item.get("valorUnitario")}, ""):
                 continue
             chave = (plano.get("idPcaPncp"), item.get("numeroItem"))
