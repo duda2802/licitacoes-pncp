@@ -331,7 +331,7 @@ ARTIGOS = {"o", "os", "um", "uma", "uns", "umas", "seu", "sua", "seus", "suas"}
 ANTES_DE_DESTINO = {"chassi", "chassis", "sobrechassi", "modelo", "modelos", "marca", "marcas",
                     "frota", "cabine", "carroceria", "cacamba", "tanque", "implemento",
                     "implementos", "transporte", "remocao", "reboque", "guincho",
-                    "guinchamento", "resgate", "socorro", "recolhimento", "abastecimento",
+                    "guinchamento", "resgate", "socorro", "acesso", "recolhimento", "abastecimento",
                     "lavagem", "rocadeira", "rocadeiras", "grade", "arado", "potencia"}
 IMPLEMENTO_SEM_PREPOSICAO = {"carroceria", "carrocerias", "cacamba", "cacambas", "bau", "baus",
                              "implemento", "implementos"}
@@ -351,6 +351,24 @@ RE_VEICULO_DO_ORGAO = re.compile(
     r"(?:administracao|prefeitura|municipio|contratante|orgao|secretaria)"
     r"|\bpertencentes? (?:a|ao) (?:administracao|prefeitura|municipio|contratante|orgao|secretaria)"
     r"|\bde propriedade d[oa]s? (?:administracao|prefeitura|municipio|contratante|orgao|secretaria)")
+
+
+# lista de veículos que é destino: "transporte de veículos leves, médios, caminhões
+# e máquinas", "rampas para acesso de veículo pequenos, médios, caminhões"
+PALAVRAS_LISTA_VEICULOS = {"e", "ou", "veiculo", "veiculos", "leves", "medios", "pequenos",
+                           "pesados", "grandes", "carros", "automoveis", "motos",
+                           "motocicletas", "maquinas", "caminhoes", "caminhao",
+                           "caminhonetes", "utilitarios", "onibus"}
+
+
+def lista_de_destino(antes):
+    """True se as palavras antes do veículo são uma lista que começa num destino."""
+    j = len(antes) - 1
+    while j >= 0 and antes[j] in PALAVRAS_LISTA_VEICULOS:
+        j -= 1
+    if j < 0 or j == len(antes) - 1:
+        return False
+    return antes[j] in DESTINO or (antes[j] == "de" and j > 0 and antes[j - 1] in ANTES_DE_DESTINO)
 
 
 def inclui_caminhao(texto):
@@ -381,6 +399,8 @@ def inclui_caminhao(texto):
                 antes_anterior in IMPLEMENTO_SEM_PREPOSICAO and anterior not in ("com", "e", "ou", "sendo")):
             continue
         if anterior == "com" and antes_anterior in ANTES_DE_COM:
+            continue
+        if lista_de_destino(antes):
             continue
         return True
     for m in RE_DRONE.finditer(t):
@@ -547,9 +567,18 @@ RE_ITEM_FORA = re.compile(
 # no nome do item (primeiras palavras), não na especificação ("caixa de chorume")
 RE_ITEM_FORA_NOME = re.compile(
     r"\b(?:caixas?|hipoclorito|agua sanitaria|desinfetante|pimenta|livros?|balancas?"
-    r"|domestico|garfos?|plugues?|defensivos?|spray)\b")
+    r"|domestico|garfos?|plugues?|defensivos?|spray|marmibox)\b")
 # recipiente pequeno ("container plástico com alça 20 litros"), nas primeiras palavras
 RE_ITEM_PEQUENO = re.compile(r"\b\d{1,2} ?(?:litros?|l|lts)\b")
+# objeto pequeno medido em centímetros ("tanque aço inox ... 50 x 40 x 22 cm" é cuba;
+# lixeira de 120 L já passa de 90 cm de altura)
+RE_ITEM_EM_CM = re.compile(r"\b(\d{1,3}) x (\d{1,3})(?: x (\d{1,3}))? ?cm\b")
+MEDIDA_MAXIMA_ITEM_PEQUENO_CM = 70
+
+
+def item_pequeno_em_cm(texto):
+    m = RE_ITEM_EM_CM.search(texto)
+    return bool(m) and max(int(g) for g in m.groups() if g) < MEDIDA_MAXIMA_ITEM_PEQUENO_CM
 RE_ITEM_OUTRO_VEICULO = re.compile(
     r"^(?:\W*\d+\W*)?(?:veiculo (?:tipo )?)?(?:vans?|pick ?ups?|picapes?|caminhonetes?|ambulancias?)\b"
     r"|^(?:\W*\d+\W*)?veiculo (?:tipo )?furgao\b")
@@ -561,7 +590,8 @@ def item_fora(item):
     return bool(RE_ITEM_FORA.search(" ".join(palavras[:20]))
                 or RE_ITEM_FORA_NOME.search(" ".join(palavras[:8]))
                 or RE_ITEM_OUTRO_VEICULO.search(desc)
-                or RE_ITEM_PEQUENO.search(" ".join(palavras[:10])))
+                or RE_ITEM_PEQUENO.search(" ".join(palavras[:10]))
+                or item_pequeno_em_cm(" ".join(palavras[:20])))
 
 
 RE_OBJETO_AGRICOLA = re.compile(r"\b(?:agricol|agropecuari|patrulha|forrage|lavoura)\w*")
