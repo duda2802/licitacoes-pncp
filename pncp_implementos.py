@@ -149,7 +149,7 @@ JANELA = 20
 # rodoviários") depois de "para"/"no"/"dos" é destino de outra coisa:
 # "mangueiras PARA caminhão-pipa", "chave de roda PARA implementos rodoviários".
 ANTES_DE_CAMINHAO_DESTINO = {"para", "p", "em", "no", "na", "nos", "nas", "sobre",
-                             "a", "ao", "aos"}
+                             "a", "ao", "aos", "por"}
 ANTES_DE_GENERICO_DESTINO = ANTES_DE_CAMINHAO_DESTINO | {"dos", "das", "do", "da"}
 RE_TERMO_GENERICO = re.compile(r"(?:implementos?|containers?|conteiner(?:es)?|contentor(?:es)?)\b")
 
@@ -163,6 +163,9 @@ def ocorrencia_de_compra(texto_normalizado, inicio):
             antes[-1] in ANTES_DE_GENERICO_DESTINO
             or ({"para", "p"} & set(antes[-3:]) and not COMPRA & set(antes[-3:]))):
         return False  # "... para caminhões e implementos rodoviários"
+    # "fornecimento de água potável por meio de caminhão-pipa": é o meio, não a compra
+    if antes[-2:] in (["meio", "de"], ["atraves", "de"]):
+        return False
     # "botão compatível com o veículo caminhão basculante": peça para o veículo
     if {"compativel", "compativeis"} & set(antes[-4:]):
         return False
@@ -324,7 +327,7 @@ ANTES_DE_DRONE_COMPRADO = COMPRA_DE | {"", "kit", "por"}
 ANTES_DE_TRATOR_COMPRADO = COMPRA_DE | {"", "e", "sendo", "novo", "novos", "micro"}
 # "a" antes de caminhão/veículo (masculinos) é sempre preposição
 DESTINO = {"para", "p", "em", "no", "na", "nos", "nas", "sobre", "sob", "a", "ao", "aos",
-           "do", "da", "dos", "das", "ate"}
+           "do", "da", "dos", "das", "ate", "por"}
 ARTIGOS = {"o", "os", "um", "uma", "uns", "umas", "seu", "sua", "seus", "suas"}
 # "... de caminhão" só é destino depois destas palavras ("chassi de caminhão",
 # "plataforma para transporte de veículos", "roçadeira de trator")
@@ -567,7 +570,8 @@ RE_ITEM_FORA = re.compile(
 # no nome do item (primeiras palavras), não na especificação ("caixa de chorume")
 RE_ITEM_FORA_NOME = re.compile(
     r"\b(?:caixas?|hipoclorito|agua sanitaria|desinfetante|pimenta|livros?|balancas?"
-    r"|domestico|garfos?|plugues?|defensivos?|spray|marmibox)\b")
+    r"|domestico|garfos?|plugues?|defensivos?|spray|marmibox|torneiras?)\b"
+    r"|^\W*reservatorios?\b")
 # recipiente pequeno ("container plástico com alça 20 litros"), nas primeiras palavras
 RE_ITEM_PEQUENO = re.compile(r"\b\d{1,2} ?(?:litros?|l|lts)\b")
 # objeto pequeno medido em centímetros ("tanque aço inox ... 50 x 40 x 22 cm" é cuba;
