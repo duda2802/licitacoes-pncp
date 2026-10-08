@@ -151,6 +151,7 @@ JANELA = 20
 ANTES_DE_CAMINHAO_DESTINO = {"para", "p", "em", "no", "na", "nos", "nas", "sobre",
                              "a", "ao", "aos", "por"}
 ANTES_DE_GENERICO_DESTINO = ANTES_DE_CAMINHAO_DESTINO | {"dos", "das", "do", "da"}
+LUGAR_DE_CONTAINER = {"area", "areas", "patio", "patios", "terminal", "terminais", "deposito"}
 RE_TERMO_GENERICO = re.compile(r"(?:implementos?|containers?|conteiner(?:es)?|contentor(?:es)?)\b")
 
 
@@ -163,6 +164,9 @@ def ocorrencia_de_compra(texto_normalizado, inicio):
             antes[-1] in ANTES_DE_GENERICO_DESTINO
             or ({"para", "p"} & set(antes[-3:]) and not COMPRA & set(antes[-3:]))):
         return False  # "... para caminhões e implementos rodoviários"
+    if RE_TERMO_GENERICO.match(texto_normalizado, inicio) and len(antes) > 1 and (
+            antes[-1] in ("de", "para") and antes[-2] in LUGAR_DE_CONTAINER):
+        return False  # "obras na área de contêineres", "pátio de containers"
     # "fornecimento de água potável por meio de caminhão-pipa": é o meio, não a compra
     if antes[-2:] in (["meio", "de"], ["atraves", "de"]):
         return False
