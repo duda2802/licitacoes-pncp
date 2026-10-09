@@ -140,6 +140,7 @@ NAO_E_COMPRA = {
     "placa", "placas", "emplacamento", "licenciamento", "fretamento", "frete",
     "adesivo", "adesivos", "etiqueta", "etiquetas",
     "treinamento", "treinamentos", "curso", "cursos", "capacitacao",
+    "desinfeccao", "higienizacao", "desengorduramento",
 }
 COMPRA = {"aquisicao", "aquisicoes", "compra", "compras", "adquirir"}
 JANELA = 20
@@ -158,7 +159,9 @@ RE_TERMO_GENERICO = re.compile(r"(?:implementos?|containers?|conteiner(?:es)?|co
 def ocorrencia_de_compra(texto_normalizado, inicio):
     """False se o termo que começa em `inicio` é objeto de serviço/peça, não de compra."""
     antes = texto_normalizado[:inicio].split()
-    if antes and antes[-1] in ANTES_DE_CAMINHAO_DESTINO and RE_VEICULO.match(texto_normalizado, inicio):
+    sem_artigo = [p for p in antes[-3:] if p not in ARTIGOS]
+    if sem_artigo and sem_artigo[-1] in ANTES_DE_CAMINHAO_DESTINO and RE_VEICULO.match(
+            texto_normalizado, inicio):
         return False
     if RE_TERMO_GENERICO.match(texto_normalizado, inicio) and antes and (
             antes[-1] in ANTES_DE_GENERICO_DESTINO
@@ -560,7 +563,7 @@ RE_AGRICOLA = re.compile(r"\b(?:agricol|tratorizad|tratorad|recolhedor|colhedo|c
 # Fora do escopo por outro motivo: container de esterilização/laboratório, de TI.
 RE_FORA_DO_ESCOPO = re.compile(
     r"\b(?:esteriliza|cirurgic|hospitala|laborator|amostra|kubernetes|docker|openshift"
-    r"|bote|botes|embarcac|lancha|nautic)\w*")
+    r"|bote|botes|embarcac|lancha|nautic|nitrogenio|criogenic)\w*")
 # objeto de instrumental médico/odontológico: "caixa tipo container" ali não conta
 RE_OBJETO_FORA_DO_ESCOPO = re.compile(
     r"\b(?:instrumenta\w*|cirurgic\w*|esteriliza\w*|odontolog\w*)")
@@ -575,7 +578,9 @@ RE_ITEM_FORA = re.compile(
 RE_ITEM_FORA_NOME = re.compile(
     r"\b(?:caixas?|hipoclorito|agua sanitaria|desinfetante|pimenta|livros?|balancas?"
     r"|domestico|garfos?|plugues?|defensivos?|spray|marmibox|torneiras?)\b"
-    r"|^\W*reservatorios?\b")
+    r"|^\W*reservatorios?\b|\btanques? (?:\w+ ){0,4}polietileno")
+# volume em ml: utensílio ("passadeira a vapor com tanque de água de 240 ml")
+RE_ITEM_ML = re.compile(r"\b\d+ ?ml\b")
 # recipiente pequeno ("container plástico com alça 20 litros"), nas primeiras palavras
 RE_ITEM_PEQUENO = re.compile(r"\b\d{1,2} ?(?:litros?|l|lts)\b")
 # objeto pequeno medido em centímetros ("tanque aço inox ... 50 x 40 x 22 cm" é cuba;
@@ -588,7 +593,7 @@ def item_pequeno_em_cm(texto):
     m = RE_ITEM_EM_CM.search(texto)
     return bool(m) and max(int(g) for g in m.groups() if g) < MEDIDA_MAXIMA_ITEM_PEQUENO_CM
 RE_ITEM_OUTRO_VEICULO = re.compile(
-    r"^(?:\W*\d+\W*)?(?:veiculo (?:tipo )?)?(?:vans?|pick ?ups?|picapes?|caminhonetes?|ambulancias?)\b"
+    r"^(?:\W*\d+\W*)?(?:veiculo (?:automotor )?(?:tipo )?)?(?:vans?|pick ?ups?|picapes?|caminhonetes?|ambulancias?)\b"
     r"|^(?:\W*\d+\W*)?veiculo (?:tipo )?furgao\b")
 
 
@@ -599,7 +604,8 @@ def item_fora(item):
                 or RE_ITEM_FORA_NOME.search(" ".join(palavras[:8]))
                 or RE_ITEM_OUTRO_VEICULO.search(desc)
                 or RE_ITEM_PEQUENO.search(" ".join(palavras[:10]))
-                or item_pequeno_em_cm(" ".join(palavras[:20])))
+                or item_pequeno_em_cm(" ".join(palavras[:20]))
+                or RE_ITEM_ML.search(" ".join(palavras[:25])))
 
 
 RE_OBJETO_AGRICOLA = re.compile(r"\b(?:agricol|agropecuari|patrulha|forrage|lavoura)\w*")
