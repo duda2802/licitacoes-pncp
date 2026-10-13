@@ -555,12 +555,18 @@ RE_LOCACAO = re.compile(r"\b(?:locac\w*|aluguel|alugueis|comodato|concessao)\b")
 RE_SERVICO_OBJETO = re.compile(r"^(?:\w+ ){0,6}(?:transporte|coleta|servicos?|prestacao)\b")
 
 
+RE_ATRIBUTO = re.compile(r"\b\w+\s*:", re.UNICODE)
+
+
 def item_de_servico(item):
     """Item de serviço/peça: marcado como serviço no catálogo ou descrição que começa
     com locação, manutenção, peça etc. ("14507-Locação de equipamento ...")."""
     if item.get("materialOuServico") == "S":
         return True
-    palavras = [p for p in normalizar(item.get("descricao")).split() if not p.isdigit()]
+    # nome de atributo do catálogo não conta: "Caminhão Carga potência motor: 130,
+    # combustível: diesel" é o caminhão, não compra de combustível
+    texto = RE_ATRIBUTO.sub(" ", item.get("descricao") or "")
+    palavras = [p for p in normalizar(texto).split() if not p.isdigit()]
     return (any(p in NAO_E_COMPRA for p in palavras[:6])
             or bool(RE_LOCACAO.search(" ".join(palavras[:12]))))
 
