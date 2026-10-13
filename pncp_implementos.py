@@ -156,6 +156,9 @@ LUGAR_DE_CONTAINER = {"area", "areas", "patio", "patios", "terminal", "terminais
 RE_TERMO_GENERICO = re.compile(r"(?:implementos?|containers?|conteiner(?:es)?|contentor(?:es)?)\b")
 
 
+RE_SERVICO_COM = re.compile(r"\b(?:prestacao de )?servicos? (?:com|de locacao)\b")
+
+
 def ocorrencia_de_compra(texto_normalizado, inicio):
     """False se o termo que começa em `inicio` é objeto de serviço/peça, não de compra."""
     antes = texto_normalizado[:inicio].split()
@@ -178,6 +181,13 @@ def ocorrencia_de_compra(texto_normalizado, inicio):
         return False
     # "fornecimento de bebedouros, contêineres e aramado em regime de comodato"
     if "comodato" in texto_normalizado[inicio:].split()[:10]:
+        return False
+    # "prestação de serviços com retroescavadeira, ..., caminhão-pipa": lista longa
+    # de equipamentos do serviço, que passa da janela de palavras
+    servico = None
+    for servico in RE_SERVICO_COM.finditer(texto_normalizado, 0, inicio):
+        pass
+    if servico and not COMPRA & set(texto_normalizado[servico.end():inicio].split()):
         return False
     janela = antes[-JANELA:]
     for k in range(len(janela) - 1, -1, -1):
@@ -577,7 +587,7 @@ RE_ITEM_FORA = re.compile(
 # no nome do item (primeiras palavras), não na especificação ("caixa de chorume")
 RE_ITEM_FORA_NOME = re.compile(
     r"\b(?:caixas?|hipoclorito|agua sanitaria|desinfetante|pimenta|livros?|balancas?"
-    r"|domestico|garfos?|plugues?|defensivos?|spray|marmibox|torneiras?)\b"
+    r"|domestico|garfos?|plugues?|defensivos?|spray|marmibox|torneiras?|sacos?|big bag)\b"
     r"|^\W*reservatorios?\b|\btanques? (?:\w+ ){0,4}polietileno")
 # volume em ml: utensílio ("passadeira a vapor com tanque de água de 240 ml")
 RE_ITEM_ML = re.compile(r"\b\d+ ?ml\b")
@@ -593,7 +603,7 @@ def item_pequeno_em_cm(texto):
     m = RE_ITEM_EM_CM.search(texto)
     return bool(m) and max(int(g) for g in m.groups() if g) < MEDIDA_MAXIMA_ITEM_PEQUENO_CM
 RE_ITEM_OUTRO_VEICULO = re.compile(
-    r"^(?:\W*\d+\W*)?(?:veiculo (?:automotor )?(?:tipo )?)?(?:vans?|pick ?ups?|picapes?|caminhonetes?|ambulancias?)\b"
+    r"^(?:\W*\d+\W*)?(?:veiculo (?:automotor )?(?:tipo )?)?(?:vans?|pick ?ups?|picapes?|caminhonetes?|ambulancias?|furgonetas?)\b"
     r"|^(?:\W*\d+\W*)?veiculo (?:tipo )?furgao\b")
 
 
@@ -800,7 +810,8 @@ def filtrar(itens, termos, agora, incluir_caminhao=False, descartados=None,
         aceita, itens_impl, verificacao = avaliar_itens(item, termos)
         if aceita:
             yield montar_resultado(item, encontrados, itens_impl, verificacao)
-        elif verificacao not in ("agrícola", "locação") and descartados is not None:
+        elif (verificacao not in ("agrícola", "locação") and descartados is not None
+              and not RE_ITEM_OUTRO_VEICULO.search(normalizar(item.get("objetoCompra")))):
             descartados.append(item)
 
 
