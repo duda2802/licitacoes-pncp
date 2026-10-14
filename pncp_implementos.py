@@ -571,7 +571,10 @@ def item_de_servico(item):
     # combustível: diesel" é o caminhão, não compra de combustível
     texto = RE_ATRIBUTO.sub(" ", item.get("descricao") or "")
     palavras = [p for p in normalizar(texto).split() if not p.isdigit()]
-    return (any(p in NAO_E_COMPRA for p in palavras[:6])
+    # "Veículo de serviço administrativo de carga" é o tipo do veículo
+    nao_compra = [p for k, p in enumerate(palavras[:6]) if p in NAO_E_COMPRA and not (
+        k >= 2 and palavras[k - 1] == "de" and RE_VEICULO.fullmatch(palavras[k - 2]))]
+    return (bool(nao_compra)
             or bool(RE_LOCACAO.search(" ".join(palavras[:12]))))
 
 
