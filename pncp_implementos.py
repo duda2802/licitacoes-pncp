@@ -176,6 +176,10 @@ def ocorrencia_de_compra(texto_normalizado, inicio):
     # "fornecimento de água potável por meio de caminhão-pipa": é o meio, não a compra
     if antes[-2:] in (["meio", "de"], ["atraves", "de"]):
         return False
+    # "basculamento em caminhões equipados com sistema lifter": é o caminhão de coleta,
+    # não o que se compra (o contentor)
+    if antes[-2:] == ["com", "sistema"] and texto_normalizado.startswith("lifter", inicio):
+        return False
     # "botão compatível com o veículo caminhão basculante": peça para o veículo
     if {"compativel", "compativeis"} & set(antes[-4:]):
         return False
@@ -593,7 +597,7 @@ RE_ITEM_FORA = re.compile(
 # no nome do item (primeiras palavras), não na especificação ("caixa de chorume")
 RE_ITEM_FORA_NOME = re.compile(
     r"\b(?:caixas?|hipoclorito|agua sanitaria|desinfetante|pimenta|livros?|balancas?"
-    r"|domestico|garfos?|plugues?|defensivos?|spray|marmibox|torneiras?|sacos?|big bag)\b"
+    r"|domestico|garfos?|plugues?|defensivos?|spray|marmibox|torneiras?|sacos?|big bag|aspirador\w*)\b"
     r"|^\W*reservatorios?\b|\btanques? (?:\w+ ){0,4}polietileno")
 # volume em ml: utensílio ("passadeira a vapor com tanque de água de 240 ml")
 RE_ITEM_ML = re.compile(r"\b\d+ ?ml\b")
