@@ -140,7 +140,7 @@ NAO_E_COMPRA = {
     "placa", "placas", "emplacamento", "licenciamento", "fretamento", "frete",
     "adesivo", "adesivos", "etiqueta", "etiquetas",
     "treinamento", "treinamentos", "curso", "cursos", "capacitacao",
-    "desinfeccao", "higienizacao", "desengorduramento",
+    "desinfeccao", "higienizacao", "desengorduramento", "seguro", "seguros", "apolice", "apolices",
 }
 COMPRA = {"aquisicao", "aquisicoes", "compra", "compras", "adquirir"}
 JANELA = 20
@@ -156,7 +156,13 @@ LUGAR_DE_CONTAINER = {"area", "areas", "patio", "patios", "terminal", "terminais
 RE_TERMO_GENERICO = re.compile(r"(?:implementos?|containers?|conteiner(?:es)?|contentor(?:es)?)\b")
 
 
-RE_SERVICO_COM = re.compile(r"\b(?:prestacao de )?servicos? (?:com|de locacao)\b")
+FORNECE = {"fornecer", "fornecimento", "fornecidos", "fornecidas"}
+RE_SERVICO_COM = re.compile(
+    r"\b(?:prestacao de )?servicos? (?:com|de locacao)\b"
+    # "contratação de empresa para limpeza de bocas de lobo através de caminhão com
+    # equipamento hidrojato": contrata o serviço (não "para fornecimento/aquisição")
+    r"|\bcontratacao de empresa (?:especializada )?(?:para|em|na|no) (?:a |o )?"
+    r"(?!aquisic|fornec|compra|entrega)\w+")
 
 
 def ocorrencia_de_compra(texto_normalizado, inicio):
@@ -191,7 +197,7 @@ def ocorrencia_de_compra(texto_normalizado, inicio):
     servico = None
     for servico in RE_SERVICO_COM.finditer(texto_normalizado, 0, inicio):
         pass
-    if servico and not COMPRA & set(texto_normalizado[servico.end():inicio].split()):
+    if servico and not (COMPRA | FORNECE) & set(texto_normalizado[servico.end():inicio].split()):
         return False
     janela = antes[-JANELA:]
     for k in range(len(janela) - 1, -1, -1):
@@ -600,12 +606,12 @@ RE_ITEM_FORA = re.compile(
 # no nome do item (primeiras palavras), não na especificação ("caixa de chorume")
 RE_ITEM_FORA_NOME = re.compile(
     r"\b(?:caixas?|hipoclorito|agua sanitaria|desinfetante|pimenta|livros?|balancas?"
-    r"|domestico|garfos?|plugues?|defensivos?|spray|marmibox|torneiras?|sacos?|big bag|aspirador\w*)\b"
+    r"|domestico|garfos?|plugues?|defensivos?|spray|marmibox|torneiras?|sacos?|big bag|aspirador\w*|mangueiras?|radio)\b"
     r"|^\W*reservatorios?\b|\btanques? (?:\w+ ){0,4}polietileno")
 # volume em ml: utensílio ("passadeira a vapor com tanque de água de 240 ml")
 RE_ITEM_ML = re.compile(r"\b\d+ ?ml\b")
 # recipiente pequeno ("container plástico com alça 20 litros"), nas primeiras palavras
-RE_ITEM_PEQUENO = re.compile(r"\b\d{1,2} ?(?:litros?|l|lts)\b")
+RE_ITEM_PEQUENO = re.compile(r"\b\d{1,2} ?(?:litros?|l|lts?)\b")
 # objeto pequeno medido em centímetros ("tanque aço inox ... 50 x 40 x 22 cm" é cuba;
 # lixeira de 120 L já passa de 90 cm de altura)
 RE_ITEM_EM_CM = re.compile(r"\b(\d{1,3}) x (\d{1,3})(?: x (\d{1,3}))? ?cm\b")
@@ -786,6 +792,24 @@ def montar_resultado(item, encontrados, itens_implemento=(), verificacao=""):
     }
 
 
+RE_PICAPE = re.compile(r"\b(?:caminhonete\w*|camionete\w*|picapes?|pick ?ups?)\b")
+RE_CAMINHAO = re.compile(r"\bcaminh(?:ao|oes)\b")
+
+
+def fora_da_aba_caminhao(objeto, encontrados):
+    """Compra de veículo que não interessa na aba "Caminhão + implemento": van/picape
+    só com "carroceria" ("caminhonete cabine simples, carroceria aberta") e trator
+    agrícola ("trator agrícola ... kit de combate com tanque de água")."""
+    obj = normalizar(objeto)
+    if RE_ITEM_OUTRO_VEICULO.search(obj):
+        return True
+    if RE_CAMINHAO.search(obj):
+        return False
+    if RE_PICAPE.search(obj) and all("carroceria" in t for _, t in encontrados):
+        return True
+    return bool(RE_TRATOR.search(obj) and RE_AGRICOLA.search(obj))
+
+
 def filtrar(itens, termos, agora, incluir_caminhao=False, descartados=None,
             achados_site=frozenset()):
     """`achados_site`: editais que a busca do site achou pelos itens (buscar_no_site);
@@ -824,7 +848,7 @@ def filtrar(itens, termos, agora, incluir_caminhao=False, descartados=None,
         if aceita:
             yield montar_resultado(item, encontrados, itens_impl, verificacao)
         elif (verificacao not in ("agrícola", "locação") and descartados is not None
-              and not RE_ITEM_OUTRO_VEICULO.search(normalizar(item.get("objetoCompra")))):
+              and not fora_da_aba_caminhao(item.get("objetoCompra"), encontrados)):
             descartados.append(item)
 
 
