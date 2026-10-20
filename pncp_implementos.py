@@ -44,7 +44,8 @@ TERMOS_BUSCA_SITE = [
     "semi-reboque", "implemento", "munck", "cesto aéreo", "coletor compactador",
     "comboio", "melosa", "auto socorro", "cesta aérea", "cesto elevatório",
     "plataforma aérea", "lança elevatória", "linha viva", "container", "contêiner", "conteiner",
-    "contentor", "hidrojato", "limpa fossa", "isotérmico", "rodotrem", "graneleiro"]
+    "contentor", "hidrojato", "limpa fossa", "isotérmico", "rodotrem", "graneleiro",
+    "tanque de óleo diesel", "baú furgão", "caçamba estacionária", "hidrovácuo"]
 # Modalidades consultadas (código PNCP): pregão, concorrência e dispensa.
 MODALIDADES = {6: "Pregão eletrônico", 7: "Pregão presencial", 4: "Concorrência eletrônica",
                5: "Concorrência presencial", 8: "Dispensa"}
@@ -152,6 +153,9 @@ JANELA = 20
 ANTES_DE_CAMINHAO_DESTINO = {"para", "p", "em", "no", "na", "nos", "nas", "sobre",
                              "a", "ao", "aos", "por"}
 ANTES_DE_GENERICO_DESTINO = ANTES_DE_CAMINHAO_DESTINO | {"dos", "das", "do", "da"}
+# "frigorífico em contêiner marítimo de 20 pés": o contêiner é o produto
+RE_CONTAINER_PRODUTO = re.compile(
+    r"(?:containers?|conteiner(?:es)?)\s+(?:\w+\s+){0,2}(?:maritimo|reefer|dry|high cube|\d+ pes)")
 LUGAR_DE_CONTAINER = {"area", "areas", "patio", "patios", "terminal", "terminais", "deposito"}
 RE_TERMO_GENERICO = re.compile(r"(?:implementos?|containers?|conteiner(?:es)?|contentor(?:es)?)\b")
 
@@ -176,7 +180,8 @@ def ocorrencia_de_compra(texto_normalizado, inicio):
     if sem_artigo and sem_artigo[-1] in ANTES_DE_CAMINHAO_DESTINO and RE_VEICULO.match(
             texto_normalizado, inicio):
         return False
-    if RE_TERMO_GENERICO.match(texto_normalizado, inicio) and antes and (
+    if RE_TERMO_GENERICO.match(texto_normalizado, inicio) and antes and not RE_CONTAINER_PRODUTO.match(
+            texto_normalizado, inicio) and (
             antes[-1] in ANTES_DE_GENERICO_DESTINO
             or ({"para", "p"} & set(antes[-3:]) and not COMPRA & set(antes[-3:]))):
         return False  # "... para caminhões e implementos rodoviários"
@@ -373,7 +378,7 @@ ANTES_DE_DESTINO = {"chassi", "chassis", "sobrechassi", "modelo", "modelos", "ma
                     "guinchamento", "resgate", "socorro", "acesso", "elevador", "elevadores", "recolhimento", "abastecimento",
                     "lavagem", "rocadeira", "rocadeiras", "grade", "arado", "potencia"}
 IMPLEMENTO_SEM_PREPOSICAO = {"carroceria", "carrocerias", "cacamba", "cacambas", "bau", "baus",
-                             "implemento", "implementos"}
+                             "implemento", "implementos", "cabine", "chassi", "chassis"}
 # "... com caminhão" só é destino depois destas ("compatível com trator")
 ANTES_DE_COM = {"compativel", "compativeis", "compatibilidade", "adaptavel", "adaptaveis",
                 "acoplavel", "acoplaveis", "uso", "utilizacao", "engate"}
@@ -601,7 +606,7 @@ RE_AGRICOLA = re.compile(r"\b(?:agricol|tratorizad|tratorad|recolhedor|colhedo|c
 # Fora do escopo por outro motivo: container de esterilização/laboratório, de TI.
 RE_FORA_DO_ESCOPO = re.compile(
     r"\b(?:esteriliza|cirurgic|hospitala|laborator|amostra|kubernetes|docker|openshift"
-    r"|bote|botes|embarcac|lancha|nautic|nitrogenio|criogenic)\w*")
+    r"|bote|botes|embarcac|lancha|nautic|nitrogenio|criogenic|material carroceria)\w*")
 # objeto de instrumental médico/odontológico: "caixa tipo container" ali não conta
 RE_OBJETO_FORA_DO_ESCOPO = re.compile(
     r"\b(?:instrumenta\w*|cirurgic\w*|esteriliza\w*|odontolog\w*)")
@@ -646,6 +651,9 @@ def item_fora(item):
                 or RE_ITEM_ML.search(" ".join(palavras[:25])))
 
 
+# atributo do catálogo que não faz o item ser agrícola ("caçamba roll-on ... uso
+# agrícola e industrial")
+RE_AGRICOLA_NEUTRO = re.compile(r"\buso agricola e (?:industrial|urbano)\b|\bagricola e industrial\b")
 RE_OBJETO_AGRICOLA = re.compile(r"\b(?:agricol|agropecuari|patrulha|forrage|lavoura)\w*")
 # no objeto genérico o termo tem de estar no começo do item: "Tanque pipa 8.000 L",
 # não "Cortador de piso ... com tanque de água"
@@ -671,7 +679,7 @@ def item_agricola(item, objeto):
     "carreta ..." num objeto agrícola ("carretas agrícolas e reboque prancha").
     Carreta/reboque/tanque agrícola acima de VALOR_MINIMO_CARRETA_AGRICOLA não
     conta como agrícola (entra no resultado)."""
-    desc = normalizar(item.get("descricao"))
+    desc = RE_AGRICOLA_NEUTRO.sub(" ", normalizar(item.get("descricao")))
     if RE_FORA_DO_ESCOPO.search(desc) or RE_OBJETO_FORA_DO_ESCOPO.search(normalizar(objeto)):
         return True
     agricola = bool(RE_AGRICOLA.search(desc)) or (
@@ -731,6 +739,10 @@ def avaliar_itens(compra, termos, so_com_termo=False):
             # locação/concessão/transporte/coleta: contrata o serviço, não compra
             return False, [], "locação"
         return not inclui_caminhao(objeto), [], "objeto (itens de serviço)"
+    if all(inclui_caminhao(i.get("descricao")) for i in materiais):
+        # só caminhões ("Caminhão Carga ...") num objeto que usa o termo
+        # ("caminhões-baú refrigerados ... produção agropecuária"): caminhão + implemento
+        return False, [], "itens (sem termo)"
     uteis = [i for i in materiais if not item_agricola(i, objeto)]
     if RE_OBJETO_AGRICOLA.search(normalizar(objeto)):
         # objeto agrícola: só entra carreta/reboque/tanque (que passou do valor mínimo)

@@ -56,6 +56,9 @@ caminhão compactador
 caixa compactadora
 limpa fossa
 equipamento de hidrojato
+hidrovácuo
+sucção a vácuo
+implemento combinado
 compactador de resíduos
 equipamento compactador
 basculador de contêiner
@@ -78,6 +81,8 @@ caçamba meia cana
 caçamba graneleira
 caçamba roll on
 roll on roll off
+caçamba estacionária
+caçamba metálica estacionária
 roll-on roll-off
 piso móvel
 caçamba sucateira
@@ -109,6 +114,9 @@ prancha rodoviária
 equipado com prancha
 caminhão com prancha
 guincho de arraste
+carroceria prancha
+prancha de transporte
+trailer reboque
 carroceria plataforma
 asa delta
 
@@ -143,6 +151,11 @@ baú frigorífico
 baú isotérmico
 baú de carga
 baú carga seca
+baú furgão
+veículo baú
+baú cargo
+carroceria em aço
+carroceria de aço
 carroceria de madeira
 carroceria metálica
 carroceria sobre chassi
@@ -161,6 +174,11 @@ comboio de abastecimento
 caminhão melosa
 tanque de combustível para caminhão
 unidade de abastecimento
+tanque de óleo diesel
+tanque de diesel
+tanque de abastecimento
+tanque comboio
+implemento tanque
 
 === CATEGORIA: IMPLEMENTOS EM GERAL ===
 implemento rodoviário
