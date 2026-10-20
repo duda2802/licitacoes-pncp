@@ -158,7 +158,7 @@ RE_TERMO_GENERICO = re.compile(r"(?:implementos?|containers?|conteiner(?:es)?|co
 
 FORNECE = {"fornecer", "fornecimento", "fornecidos", "fornecidas"}
 RE_SERVICO_COM = re.compile(
-    r"\b(?:prestacao de )?servicos? (?:com|de locacao)\b"
+    r"\b(?:prestacao de )?servicos? (?:com|de locacao)\b|\bcontratacao de servicos? de\b"
     # "contratação de empresa para limpeza de bocas de lobo através de caminhão com
     # equipamento hidrojato": contrata o serviço (não "para fornecimento/aquisição")
     r"|\bcontratacao de empresa (?:especializada )?(?:para|em|na|no) (?:a |o )?"
@@ -169,6 +169,10 @@ def ocorrencia_de_compra(texto_normalizado, inicio):
     """False se o termo que começa em `inicio` é objeto de serviço/peça, não de compra."""
     antes = texto_normalizado[:inicio].split()
     sem_artigo = [p for p in antes[-3:] if p not in ARTIGOS]
+    # "compatibilidade com elevadores de caminhões coletores": destino
+    if (len(sem_artigo) > 1 and sem_artigo[-1] == "de" and sem_artigo[-2] in ANTES_DE_DESTINO
+            and RE_VEICULO.match(texto_normalizado, inicio)):
+        return False
     if sem_artigo and sem_artigo[-1] in ANTES_DE_CAMINHAO_DESTINO and RE_VEICULO.match(
             texto_normalizado, inicio):
         return False
@@ -197,8 +201,13 @@ def ocorrencia_de_compra(texto_normalizado, inicio):
     servico = None
     for servico in RE_SERVICO_COM.finditer(texto_normalizado, 0, inicio):
         pass
-    if servico and not (COMPRA | FORNECE) & set(texto_normalizado[servico.end():inicio].split()):
-        return False
+    if servico:
+        meio = texto_normalizado[servico.end():inicio].split()
+        # "fornecer e instalar caçamba" é compra; "serviço ... com fornecimento de
+        # caçamba roll-on" é parte do serviço
+        if not (COMPRA & set(meio) or any(
+                p in FORNECE and (k == 0 or meio[k - 1] != "com") for k, p in enumerate(meio))):
+            return False
     janela = antes[-JANELA:]
     for k in range(len(janela) - 1, -1, -1):
         palavra = janela[k]
@@ -361,7 +370,7 @@ ARTIGOS = {"o", "os", "um", "uma", "uns", "umas", "seu", "sua", "seus", "suas"}
 ANTES_DE_DESTINO = {"chassi", "chassis", "sobrechassi", "modelo", "modelos", "marca", "marcas",
                     "frota", "cabine", "carroceria", "cacamba", "tanque", "implemento",
                     "implementos", "transporte", "remocao", "reboque", "guincho",
-                    "guinchamento", "resgate", "socorro", "acesso", "recolhimento", "abastecimento",
+                    "guinchamento", "resgate", "socorro", "acesso", "elevador", "elevadores", "recolhimento", "abastecimento",
                     "lavagem", "rocadeira", "rocadeiras", "grade", "arado", "potencia"}
 IMPLEMENTO_SEM_PREPOSICAO = {"carroceria", "carrocerias", "cacamba", "cacambas", "bau", "baus",
                              "implemento", "implementos"}
@@ -606,7 +615,7 @@ RE_ITEM_FORA = re.compile(
 # no nome do item (primeiras palavras), não na especificação ("caixa de chorume")
 RE_ITEM_FORA_NOME = re.compile(
     r"\b(?:caixas?|hipoclorito|agua sanitaria|desinfetante|pimenta|livros?|balancas?"
-    r"|domestico|garfos?|plugues?|defensivos?|spray|marmibox|torneiras?|sacos?|big bag|aspirador\w*|mangueiras?|radio)\b"
+    r"|domestico|garfos?|plugues?|defensivos?|spray|marmibox|torneiras?|sacos?|big bag|aspirador\w*|mangueiras?|radio|lonas?)\b"
     r"|^\W*reservatorios?\b|\btanques? (?:\w+ ){0,4}polietileno")
 # volume em ml: utensílio ("passadeira a vapor com tanque de água de 240 ml")
 RE_ITEM_ML = re.compile(r"\b\d+ ?ml\b")
