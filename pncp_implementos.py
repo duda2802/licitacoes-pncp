@@ -606,7 +606,7 @@ RE_AGRICOLA = re.compile(r"\b(?:agricol|tratorizad|tratorad|recolhedor|colhedo|c
 # Fora do escopo por outro motivo: container de esterilização/laboratório, de TI.
 RE_FORA_DO_ESCOPO = re.compile(
     r"\b(?:esteriliza|cirurgic|hospitala|laborator|amostra|kubernetes|docker|openshift"
-    r"|bote|botes|embarcac|lancha|nautic|nitrogenio|criogenic|material carroceria)\w*")
+    r"|bote|botes|embarcac|lancha|nautic|nitrogenio|criogenic|material carroceria|navio)\w*")
 # objeto de instrumental médico/odontológico: "caixa tipo container" ali não conta
 RE_OBJETO_FORA_DO_ESCOPO = re.compile(
     r"\b(?:instrumenta\w*|cirurgic\w*|esteriliza\w*|odontolog\w*)")
@@ -616,12 +616,12 @@ RE_OBJETO_FORA_DO_ESCOPO = re.compile(
 RE_ITEM_FORA = re.compile(
     r"\b(?:brinquedos?|infantil|miniatura|plastico resistente)\b"
     r"|\bcaminh\w* (?:\w+ ){0,4}de plastico"
-    r"|transporte (?:com|em|por) caminh")
+    r"|transporte (?:com|em|por) caminh|cortador\w* de grama")
 # no nome do item (primeiras palavras), não na especificação ("caixa de chorume")
 RE_ITEM_FORA_NOME = re.compile(
     r"\b(?:caixas?|hipoclorito|agua sanitaria|desinfetante|pimenta|livros?|balancas?"
-    r"|domestico|garfos?|plugues?|defensivos?|spray|marmibox|torneiras?|sacos?|big bag|aspirador\w*|mangueiras?|radio|lonas?)\b"
-    r"|^\W*reservatorios?\b|\btanques? (?:\w+ ){0,4}polietileno")
+    r"|domestico|garfos?|plugues?|defensivos?|spray|marmibox|torneiras?|sacos?|big bag|aspirador\w*|mangueiras?|radio|lonas?|tecido)\b"
+    r"|^\W*reservatorios?\b|^\W*agua\b|\btanques? (?:\w+ ){0,4}polietileno")
 # volume em ml: utensílio ("passadeira a vapor com tanque de água de 240 ml")
 RE_ITEM_ML = re.compile(r"\b\d+ ?ml\b")
 # recipiente pequeno ("container plástico com alça 20 litros"), nas primeiras palavras

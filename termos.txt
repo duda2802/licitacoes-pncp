@@ -117,6 +117,7 @@ guincho de arraste
 carroceria prancha
 prancha de transporte
 trailer reboque
+carreta reboque
 carroceria plataforma
 asa delta
 
@@ -154,6 +155,8 @@ baú carga seca
 baú furgão
 veículo baú
 baú cargo
+furgão com câmara frigorífica
+caminhão furgão
 carroceria em aço
 carroceria de aço
 carroceria de madeira
@@ -163,6 +166,8 @@ caminhão munck
 munck
 guindaste veicular
 guindaste articulado
+guindaste hidráulico
+guindaste canivete
 caminhão com guindaste
 
 === CATEGORIA: COMBOIO / MELOSA ===
