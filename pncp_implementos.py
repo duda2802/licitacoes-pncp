@@ -161,6 +161,8 @@ RE_TERMO_GENERICO = re.compile(r"(?:implementos?|containers?|conteiner(?:es)?|co
 
 
 FORNECE = {"fornecer", "fornecimento", "fornecidos", "fornecidas"}
+# "serviço ... com/incluindo o fornecimento de caminhão": o fornecimento é parte do serviço
+DENTRO_DO_SERVICO = {"com", "incluindo", "incluso", "inclusive", "mediante"}
 RE_SERVICO_COM = re.compile(
     r"\b(?:prestacao de )?servicos? (?:com|de locacao)\b|\bcontratacao de servicos? de\b"
     # "contratação de empresa para limpeza de bocas de lobo através de caminhão com
@@ -210,8 +212,10 @@ def ocorrencia_de_compra(texto_normalizado, inicio):
         meio = texto_normalizado[servico.end():inicio].split()
         # "fornecer e instalar caçamba" é compra; "serviço ... com fornecimento de
         # caçamba roll-on" é parte do serviço
+        sem_art = [p for p in meio if p not in ARTIGOS]
         if not (COMPRA & set(meio) or any(
-                p in FORNECE and (k == 0 or meio[k - 1] != "com") for k, p in enumerate(meio))):
+                p in FORNECE and (k == 0 or sem_art[k - 1] not in DENTRO_DO_SERVICO)
+                for k, p in enumerate(sem_art))):
             return False
     janela = antes[-JANELA:]
     for k in range(len(janela) - 1, -1, -1):
