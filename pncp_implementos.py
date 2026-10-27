@@ -625,7 +625,7 @@ RE_ITEM_FORA = re.compile(
 RE_ITEM_FORA_NOME = re.compile(
     r"\b(?:caixas?|hipoclorito|agua sanitaria|desinfetante|pimenta|livros?|balancas?"
     r"|domestico|garfos?|plugues?|defensivos?|spray|marmibox|torneiras?|sacos?|big bag|aspirador\w*|mangueiras?|radio|lonas?|tecido)\b"
-    r"|^\W*reservatorios?\b|^\W*agua\b|^\W*tanques? (?:em |de )?aco inox|^\W*tanques? capacidade \d{1,2}\b|\btanques? (?:\w+ ){0,4}polietileno")
+    r"|^\W*reservatorios?\b|^\W*agua\b|^\W*tanques? (?:em |de )?aco inox|^\W*tanques? capacidade \d{1,2}\b(?! \d{3})|\btanques? (?:\w+ ){0,4}polietileno")
 # volume em ml: utensílio ("passadeira a vapor com tanque de água de 240 ml")
 RE_ITEM_ML = re.compile(r"\b\d+ ?ml\b")
 # recipiente pequeno ("container plástico com alça 20 litros"), nas primeiras palavras
