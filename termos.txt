@@ -101,6 +101,9 @@ brook
 plataforma auto socorro
 auto socorro
 guincho plataforma
+plataforma de guincho
+caminhão reboque
+reboque de carga
 caminhão guincho
 caminhão plataforma
 plataforma rodoviária
