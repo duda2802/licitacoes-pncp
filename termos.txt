@@ -116,6 +116,12 @@ caminhão com prancha
 guincho de arraste
 carroceria prancha
 prancha de transporte
+prancha para transporte de máquinas
+prancha fixa
+prancha móvel
+prancha baixa
+prancha rebaixada
+prancha hidráulica
 trailer reboque
 carreta reboque
 carroceria plataforma
