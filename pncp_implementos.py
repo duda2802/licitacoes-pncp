@@ -257,8 +257,8 @@ def objeto_generico(objeto):
 RE_OBJETO_DE_COMPRA = re.compile(r"\b(?:aquisic|compra|fornecimento|registro de preco)|^\W*(?:veiculos?|caminho(?:es|ao))\b")
 RE_OBJETO_NAO_COMPRA = re.compile(
     r"\b(?:servicos?|execuc|obras?|engenharia|pecas|manutenc|transporte|locac|aluguel"
-    r"|contratacao de empresas?(?: \w+){0,2} para (?!(?:o |a |futura |eventual |e )*(?:fornecimento|aquisic))|brinquedos?|pedagogic|didatic|ludic|livros?"
-    r"|agua potavel|lavagem)\w*")
+    r"|contratacao de empres\w*(?: \w+){0,2} para (?!(?:o |a |futura |eventual |e )*(?:fornecimento|aquisic))|brinquedos?|pedagogic|didatic|ludic|livros?"
+    r"|agua potavel|lavagem|construcao|combustive)\w*")
 
 
 # "fornecimento de peças, componentes ... para máquinas": não é compra do implemento
@@ -382,7 +382,7 @@ ANTES_DE_DESTINO = {"chassi", "chassis", "sobrechassi", "modelo", "modelos", "ma
                     "guinchamento", "resgate", "socorro", "acesso", "elevador", "elevadores", "recolhimento", "abastecimento",
                     "lavagem", "rocadeira", "rocadeiras", "grade", "arado", "potencia"}
 IMPLEMENTO_SEM_PREPOSICAO = {"carroceria", "carrocerias", "cacamba", "cacambas", "bau", "baus",
-                             "implemento", "implementos", "cabine", "chassi", "chassis"}
+                             "implemento", "implementos", "cabine", "chassi", "chassis", "engate", "engates"}
 # "... com caminhão" só é destino depois destas ("compatível com trator")
 ANTES_DE_COM = {"compativel", "compativeis", "compatibilidade", "adaptavel", "adaptaveis",
                 "acoplavel", "acoplaveis", "uso", "utilizacao", "engate"}
@@ -558,9 +558,51 @@ def buscar_itens(compra, tamanho=50):
         return None
 
 
+# editais achados pela busca do site, por numeroControlePNCP (ver contratacao_do_site)
+EDITAIS_DO_SITE = {}
+
+
+def contratacao_do_site(edital):
+    """Contratação no formato da API de consulta, montada a partir de um edital da busca
+    do site. A busca indexa o edital minutos depois de publicado; a API de consulta
+    (propostas abertas) às vezes leva horas, e o edital ficaria de fora."""
+    return {
+        "numeroControlePNCP": edital.get("numero_controle_pncp"),
+        "objetoCompra": edital.get("description") or "",
+        "orgaoEntidade": {"cnpj": edital.get("orgao_cnpj"),
+                          "razaoSocial": edital.get("orgao_nome")},
+        "unidadeOrgao": {"municipioNome": edital.get("municipio_nome"),
+                         "ufSigla": edital.get("uf"),
+                         "nomeUnidade": edital.get("unidade_nome")},
+        "anoCompra": int(edital.get("ano") or 0) or None,
+        "sequencialCompra": int(edital.get("numero_sequencial") or 0) or None,
+        "dataEncerramentoProposta": edital.get("data_fim_vigencia"),
+        "dataPublicacaoPncp": edital.get("data_publicacao_pncp"),
+        "valorTotalEstimado": edital.get("valor_global"),
+        "modalidadeNome": edital.get("modalidade_licitacao_nome"),
+        "linkSistemaOrigem": None,
+    }
+
+
+def completar_com_site(contratacoes, achados, modalidades=MODALIDADES_PADRAO, agora=None):
+    """Acrescenta os editais da busca do site que a API de consulta ainda não trouxe
+    (só das modalidades consultadas e com proposta ainda aberta)."""
+    tem = {c.get("numeroControlePNCP") for c in contratacoes}
+    agora = (agora or datetime.now()).isoformat(timespec="minutes")
+    novos = []
+    for k in sorted(achados):
+        e = EDITAIS_DO_SITE.get(k)
+        if (k in tem or not e or str(e.get("modalidade_licitacao_id")) not in {str(m).strip() for m in str(modalidades).strip("[]").split(",")}
+                or (e.get("data_fim_vigencia") or "") < agora or e.get("cancelado")):
+            continue
+        novos.append(contratacao_do_site(e))
+    return contratacoes + novos
+
+
 def buscar_no_site(termos=TERMOS_BUSCA_SITE, paginas=30):
     """numeroControlePNCP dos editais com proposta aberta que a busca do site do PNCP
-    acha pelos termos (no objeto ou nos itens). Termo que falhar é pulado."""
+    acha pelos termos (no objeto ou nos itens). Termo que falhar é pulado. Os editais
+    ficam em EDITAIS_DO_SITE."""
     achados = set()
     for termo in termos:
         for pagina in range(1, paginas + 1):
@@ -573,6 +615,8 @@ def buscar_no_site(termos=TERMOS_BUSCA_SITE, paginas=30):
                 break
             itens = dados.get("items") or []
             achados.update(i.get("numero_controle_pncp") for i in itens)
+            EDITAIS_DO_SITE.update((i.get("numero_controle_pncp"), i) for i in itens
+                                   if i.get("numero_controle_pncp"))
             if len(itens) < 100 or pagina * 100 >= (dados.get("total") or 0):
                 break
     achados.discard(None)
@@ -625,7 +669,7 @@ RE_ITEM_FORA = re.compile(
 RE_ITEM_FORA_NOME = re.compile(
     r"\b(?:caixas?|hipoclorito|agua sanitaria|desinfetante|pimenta|livros?|balancas?"
     r"|domestico|garfos?|plugues?|defensivos?|spray|marmibox|torneiras?|sacos?|big bag|aspirador\w*|mangueiras?|radio|lonas?|tecido|boias?|limpa ?baus?|ativado concentrado)\b"
-    r"|^\W*reservatorios?\b|^\W*agua\b|^\W*tanques? (?:em |de )?aco inox|^\W*tanques? capacidade \d{1,2}\b(?! \d{3})|\btanques? (?:\w+ ){0,4}polietileno")
+    r"|^\W*reservatorios?\b|^\W*agua\b|^\W*(?:gasolina|etanol|oleo diesel|diesel s\d+|arla)\b|^\W*tanques? (?:em |de )?aco inox|^\W*tanques? capacidade \d{1,2}\b(?! \d{3})|\btanques? (?:\w+ ){0,4}polietileno")
 # volume em ml: utensílio ("passadeira a vapor com tanque de água de 240 ml")
 RE_ITEM_ML = re.compile(r"\b\d+ ?ml\b")
 # recipiente pequeno ("container plástico com alça 20 litros"), nas primeiras palavras
@@ -747,7 +791,10 @@ def avaliar_itens(compra, termos, so_com_termo=False):
         # só caminhões ("Caminhão Carga ...") num objeto que usa o termo
         # ("caminhões-baú refrigerados ... produção agropecuária"): caminhão + implemento
         return False, [], "itens (sem termo)"
-    uteis = [i for i in materiais if not item_agricola(i, objeto)]
+    if all(item_fora(i) for i in materiais):
+        # combustível, boia, brinquedo... : o termo do objeto não é o que se compra
+        return False, [], "itens (fora)"
+    uteis = [i for i in materiais if not item_agricola(i, objeto) and not item_fora(i)]
     if RE_OBJETO_AGRICOLA.search(normalizar(objeto)):
         # objeto agrícola: só entra carreta/reboque/tanque (que passou do valor mínimo)
         uteis = [i for i in uteis if RE_CARRETA.search(
@@ -1201,6 +1248,7 @@ def main():
     if not args.sem_busca_site:
         print("Consultando a busca do site do PNCP (termos nos itens)...", file=sys.stderr)
         achados_site = buscar_no_site()
+        contratacoes = completar_com_site(contratacoes, achados_site, modalidades)
     agora = datetime.now()
     descartados = []
     resultados = list(filtrar(contratacoes, termos, agora, args.incluir_caminhao, descartados,

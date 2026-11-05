@@ -28,6 +28,9 @@ seja compra de bens (não serviço, obra, peças, locação, brinquedo/livro), o
 conferidos como num objeto genérico. Ficam de fora brinquedos ("caminhão basculante de
 plástico"), caixa organizadora "tipo container", produto "em container" e
 van/picape/ambulância com "carroceria baú" (`RE_ITEM_FORA`, `RE_ITEM_OUTRO_VEICULO`).
+A busca do site indexa o edital minutos depois de publicado, mas a consulta de propostas
+abertas às vezes leva horas. Edital achado só pela busca (pregão, concorrência ou dispensa,
+com proposta aberta) entra assim mesmo, com os dados da busca (`completar_com_site`).
 `--sem-busca-site` desliga.
 
 Para cada contratação mostra: **categoria**, modalidade, órgão, município/UF, valor estimado,
