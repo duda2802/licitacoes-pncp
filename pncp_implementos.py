@@ -770,7 +770,7 @@ def avaliar_itens(compra, termos, so_com_termo=False):
         aceita = not inclui_caminhao(objeto)
         return aceita, [], "objeto (itens indisponíveis)"
     com_termo = [i for i in itens if termos_encontrados(i.get("descricao"), termos)
-                 and not item_de_servico(i)]
+                 and not item_de_servico(i) and not item_fora(i)]
     if com_termo:
         nao_agricola = [i for i in com_termo if not item_agricola(i, objeto)]
         if not nao_agricola:
