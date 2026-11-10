@@ -177,6 +177,10 @@ guindaste veicular
 guindaste articulado
 guindaste hidráulico
 guindaste canivete
+guincho hidráulico articulado
+guincho articulado
+guincho hidráulico para caminhão
+guincho veicular
 caminhão com guindaste
 
 === CATEGORIA: COMBOIO / MELOSA ===
