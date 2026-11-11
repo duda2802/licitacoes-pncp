@@ -256,7 +256,7 @@ def objeto_generico(objeto):
 # limpeza"), não serviço, obra, peças, locação nem brinquedo/livro.
 RE_OBJETO_DE_COMPRA = re.compile(r"\b(?:aquisic|compra|fornecimento|registro de preco)|^\W*(?:veiculos?|caminho(?:es|ao))\b")
 RE_OBJETO_NAO_COMPRA = re.compile(
-    r"\b(?:servicos?|execuc|obras?|engenharia|pecas|manutenc|transporte|locac|aluguel"
+    r"\b(?:servicos?|execuc|obras?|engenharia|pecas|manutenc|(?<!incluso )(?<!inclusive )(?<!incluindo )transporte|locac|aluguel"
     r"|contratacao de empres\w*(?: \w+){0,2} para (?!(?:o |a |futura |eventual |e )*(?:fornecimento|aquisic))|brinquedos?|pedagogic|didatic|ludic|livros?"
     r"|agua potavel|lavagem|construcao|combustive)\w*")
 
