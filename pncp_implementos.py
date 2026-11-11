@@ -668,7 +668,7 @@ RE_ITEM_FORA = re.compile(
 # no nome do item (primeiras palavras), não na especificação ("caixa de chorume")
 RE_ITEM_FORA_NOME = re.compile(
     r"\b(?:caixas?|hipoclorito|agua sanitaria|desinfetante|pimenta|livros?|balancas?"
-    r"|domestico|garfos?|plugues?|defensivos?|spray|marmibox|torneiras?|sacos?|big bag|aspirador\w*|mangueiras?|radio|lonas?|tecido|boias?|limpa ?baus?|ativado concentrado)\b"
+    r"|domestico|garfos?|plugues?|defensivos?|spray|marmibox|torneiras?|sacos?|big bag|aspirador\w*|mangueiras?|radio|lonas?|tecido|boias?|limpa ?baus?|ativado concentrado|esfregao)\b"
     r"|^\W*reservatorios?\b|^\W*agua\b|^\W*(?:gasolina|etanol|oleo diesel|diesel s\d+|arla)\b|^\W*tanques? (?:em |de )?aco inox|^\W*tanques? capacidade \d{1,2}\b(?! \d{3})|\btanques? (?:\w+ ){0,4}polietileno")
 # volume em ml: utensílio ("passadeira a vapor com tanque de água de 240 ml")
 RE_ITEM_ML = re.compile(r"\b\d+ ?ml\b")
@@ -701,7 +701,11 @@ def item_fora(item):
 
 # atributo do catálogo que não faz o item ser agrícola ("caçamba roll-on ... uso
 # agrícola e industrial")
-RE_AGRICOLA_NEUTRO = re.compile(r"\buso agricola e (?:industrial|urbano)\b|\bagricola e industrial\b")
+# "plataforma ... para transporte de veículos e equipamentos agrícolas": leva a máquina
+# agrícola, não é implemento agrícola
+RE_AGRICOLA_NEUTRO = re.compile(r"\buso agricola e (?:industrial|urbano)\b|\bagricola e industrial\b"
+                                r"|\btransporte de (?:\w+ ){0,3}(?:maquinas?|equipamentos?|implementos?|tratores?)"
+                                r"(?: e \w+)? agricolas?\b")
 RE_OBJETO_AGRICOLA = re.compile(r"\b(?:agricol|agropecuari|patrulha|forrage|lavoura)\w*")
 # no objeto genérico o termo tem de estar no começo do item: "Tanque pipa 8.000 L",
 # não "Cortador de piso ... com tanque de água"

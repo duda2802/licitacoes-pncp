@@ -107,6 +107,9 @@ reboque de carga
 caminhão guincho
 caminhão plataforma
 plataforma rodoviária
+reboque plataforma
+reboque tipo plataforma
+carreta plataforma
 plataforma para transporte de máquinas
 caminhão prancha
 reboque prancha
@@ -195,6 +198,8 @@ unidade de abastecimento
 tanque de óleo diesel
 tanque de diesel
 tanque de abastecimento
+tanque de líquidos derivados de petróleo
+tanque de transporte de combustível
 tanque comboio
 implemento tanque
 
