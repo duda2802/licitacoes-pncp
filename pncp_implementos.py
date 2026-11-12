@@ -668,7 +668,7 @@ RE_ITEM_FORA = re.compile(
 # no nome do item (primeiras palavras), não na especificação ("caixa de chorume")
 RE_ITEM_FORA_NOME = re.compile(
     r"\b(?:caixas?|hipoclorito|agua sanitaria|desinfetante|pimenta|livros?|balancas?"
-    r"|domestico|garfos?|plugues?|defensivos?|spray|marmibox|torneiras?|sacos?|big bag|aspirador\w*|mangueiras?|radio|lonas?|tecido|boias?|limpa ?baus?|ativado concentrado|esfregao)\b"
+    r"|domestico|garfos?|plugues?|defensivos?|spray|marmibox|torneiras?|sacos?|big bag|aspirador\w*|mangueiras?|radio|lonas?|tecido|boias?|limpa ?baus?|ativado concentrado|esfregao|resfriador\w*)\b"
     r"|^\W*reservatorios?\b|^\W*agua\b|^\W*(?:gasolina|etanol|oleo diesel|diesel s\d+|arla)\b|^\W*tanques? (?:em |de )?aco inox|^\W*tanques? capacidade \d{1,2}\b(?! \d{3})|\btanques? (?:\w+ ){0,4}polietileno")
 # volume em ml: utensílio ("passadeira a vapor com tanque de água de 240 ml")
 RE_ITEM_ML = re.compile(r"\b\d+ ?ml\b")

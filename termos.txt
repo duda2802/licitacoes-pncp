@@ -23,6 +23,9 @@ tanque irrigação
 tanque para irrigação
 tanque bombeiro
 tanque de combate a incêndio
+encarroçamento
+encarroçamento de combate a incêndio
+tanque com sistema de bombeamento
 tanque para transporte de água
 carreta tanque
 carreta pipa
