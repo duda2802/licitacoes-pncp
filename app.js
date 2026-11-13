@@ -1,19 +1,26 @@
-/* Minhas Licitações — acompanhamento pós-licitação.
- * Dados ficam no localStorage do navegador; use Backup > Exportar para guardar uma cópia. */
+/* Gestão de Contratos e Empenhos — Grupo OSY.
+ * Contratos/atas (da assinatura ao fim da vigência) e pedidos/empenhos (do recebimento ao pagamento).
+ * Sem login: dados no navegador. Com login (auth.js): cópia local por usuário + nuvem. */
 (() => {
   'use strict';
 
   const STORAGE_KEY = 'licitacoes-pncp:v1';
-  const ALERTA_VIGENCIA_DIAS = 60;
+  const UI_KEY = 'licitacoes-pncp:ui';
   const ALERTA_ENTREGA_DIAS = 7;
+  const ALERTA_VIGENCIA_DIAS = 90;
   const PRAZO_PAGAMENTO_PADRAO = 30;
+  const COBRAR_ASSINATURA_DIAS = 10;
 
   // ---------- Estado ----------
+  let storageKey = STORAGE_KEY;
   let db = carregar();
+  const saveHooks = [];
+  const renderHooks = [];
+  const ui = carregarUI();
 
   function carregar() {
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
+      const raw = localStorage.getItem(storageKey);
       if (raw) {
         const data = JSON.parse(raw);
         if (Array.isArray(data.licitacoes)) return normalizar(data);
@@ -21,23 +28,61 @@
     } catch (e) { /* storage indisponível */ }
     return normalizar({ licitacoes: [] });
   }
+
+  /** Garante a estrutura atual (e converte dados de versões anteriores). */
   function normalizar(data) {
-    data.config = { cnpjs: [], ...(data.config || {}) };
+    data.config = { empresas: [], analistas: [], ...(data.config || {}) };
+    const cfg = data.config;
+    if (Array.isArray(cfg.cnpjs)) { // versão antiga: só CNPJs
+      for (const c of cfg.cnpjs) {
+        if (!cfg.empresas.some((e) => e.cnpj === c)) cfg.empresas.push({ id: uid(), nome: '', cnpj: c });
+      }
+      delete cfg.cnpjs;
+    }
+    for (const l of data.licitacoes) {
+      l.pedidos ||= [];
+      l.anexos ||= [];
+      for (const p of l.pedidos) p.anexos ||= [];
+      if (!l.etapas) {
+        // Registros antigos: se já tinham vigência, consideramos assinado e publicado.
+        const d = l.vigenciaInicio || '';
+        l.etapas = l.resultado === 'ganha' && d ? { recebido: d, assinadoNos: d, assinadoOrgao: d, publicado: d } : {};
+      }
+      if (l.empresaId === undefined) l.empresaId = cfg.empresas.length === 1 ? cfg.empresas[0].id : '';
+      l.analista ||= '';
+      l.situacao ||= '';
+    }
     return data;
   }
+
   function salvar(rerender = true) {
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(db)); }
-    catch (e) { toast('Não foi possível salvar no navegador. Exporte um backup!'); }
+    try { localStorage.setItem(storageKey, JSON.stringify(db)); }
+    catch (e) { if (!saveHooks.length) toast('Não foi possível salvar no navegador. Exporte um backup!'); }
+    saveHooks.forEach((fn) => fn(db));
     if (rerender) render();
   }
-  const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+  function usarDados(chave, dados) {
+    storageKey = chave;
+    db = dados ? normalizar(dados) : carregar();
+    try { localStorage.setItem(storageKey, JSON.stringify(db)); } catch (e) { /* ok */ }
+    render();
+  }
+
+  function carregarUI() {
+    const base = { view: 'painel', empresa: '', pillC: 'andamento', pillP: 'andamento', pillZ: '', ordemC: 'urgente', ordemP: 'urgente' };
+    try { return { ...base, ...JSON.parse(localStorage.getItem(UI_KEY) || '{}') }; } catch (e) { return base; }
+  }
+  function salvarUI() { try { localStorage.setItem(UI_KEY, JSON.stringify(ui)); } catch (e) { /* ok */ } }
 
   // ---------- Utilidades ----------
+  function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
   const $ = (s, el = document) => el.querySelector(s);
   const $$ = (s, el = document) => [...el.querySelectorAll(s)];
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const brl = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
   const fmtMoeda = (v) => brl.format(Number(v) || 0);
+  const soDigitos = (s) => String(s || '').replace(/\D/g, '');
+  const fmtCnpj = (c) => String(c || '').replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5');
 
   function parseMoeda(s) {
     if (s == null || s === '') return 0;
@@ -58,6 +103,7 @@
   function toISO(d) {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   }
+  const hojeISO = () => toISO(hoje());
   function addDias(iso, dias) {
     const d = parseData(iso);
     if (!d || dias === '' || dias == null || isNaN(dias)) return null;
@@ -66,465 +112,1007 @@
   }
   const diasAte = (iso) => Math.round((parseData(iso) - hoje()) / 86400000);
   const fmtData = (iso) => (iso ? parseData(iso).toLocaleDateString('pt-BR') : '—');
-
   function textoDias(n) {
     if (n === 0) return 'hoje';
     if (n === 1) return 'amanhã';
     if (n === -1) return 'ontem';
     return n > 0 ? `em ${n} dias` : `há ${-n} dias`;
   }
+  const plural = (n, s, p) => `${n} ${n === 1 ? s : (p || s + 's')}`;
+  const fmtTamanho = (b) => (b > 1048576 ? (b / 1048576).toFixed(1).replace('.', ',') + ' MB' : Math.max(1, Math.round(b / 1024)) + ' KB');
 
   function toast(msg) {
     const t = $('#toast');
     t.textContent = msg;
     t.classList.add('show');
     clearTimeout(toast._t);
-    toast._t = setTimeout(() => t.classList.remove('show'), 2600);
+    toast._t = setTimeout(() => t.classList.remove('show'), 3000);
   }
 
   // ---------- Regras de negócio ----------
+  const empresaDe = (l) => db.config.empresas.find((e) => e.id === l.empresaId);
+  const nomeEmpresa = (e) => (e ? e.nome || fmtCnpj(e.cnpj) : '');
+  const INSTRUMENTO = { ata: 'Ata de RP', contrato: 'Contrato', empenho: 'Empenho / OF' };
+  const INSTRUMENTO_LONGO = { ata: 'Ata de Registro de Preços', contrato: 'Contrato', empenho: 'Empenho / OF' };
+  const docNumero = (l) => l.numeroInstrumento || l.numero || '—';
+
   function vencimentoEntrega(lic, p) {
     const prazo = p.prazoDias !== '' && p.prazoDias != null ? p.prazoDias : lic.prazoEntregaDias;
     return addDias(p.dataRecebimento, prazo);
   }
   function vencimentoPagamento(lic, p) {
-    if (!p.dataEntrega) return null;
+    const base = p.dataNF || p.dataEntrega;
+    if (!base) return null;
     const prazo = lic.prazoPagamentoDias !== '' && lic.prazoPagamentoDias != null ? lic.prazoPagamentoDias : PRAZO_PAGAMENTO_PADRAO;
-    return addDias(p.dataEntrega, prazo);
+    return addDias(base, prazo);
   }
 
-  /** Situação de um pedido/empenho: {etapa, rotulo, classe, dias} */
+  /** Situação de um pedido: {etapa, rotulo, classe, acao?, venc?} */
   function situacaoPedido(lic, p) {
     if (p.dataPagamento) return { etapa: 'pago', rotulo: 'Pago', classe: 'ok' };
     if (p.dataEntrega) {
+      if (!p.nf) return { etapa: 'faturar', rotulo: 'Entregue — emitir NF', classe: 'warn', acao: 'Emitir a nota fiscal e cobrar' };
       const venc = vencimentoPagamento(lic, p);
       const d = venc ? diasAte(venc) : null;
-      if (d != null && d < 0) return { etapa: 'pagamento', rotulo: `Pagamento atrasado ${-d}d`, classe: 'danger', dias: d, venc };
-      return { etapa: 'pagamento', rotulo: 'Aguardando pagamento', classe: 'info', dias: d, venc };
+      if (d != null && d < 0) return { etapa: 'receber', rotulo: `Pagamento atrasado ${-d}d`, classe: 'danger', acao: 'Cobrar o pagamento', venc, atraso: true };
+      return { etapa: 'receber', rotulo: 'Aguardando pagamento', classe: 'info', venc };
     }
     const venc = vencimentoEntrega(lic, p);
-    if (!venc) return { etapa: 'entrega', rotulo: 'Entregar (sem prazo)', classe: 'warn' };
+    if (!venc) return { etapa: 'entregar', rotulo: 'A entregar', classe: 'warn', acao: 'Entregar (sem prazo informado)' };
     const d = diasAte(venc);
-    if (d < 0) return { etapa: 'entrega', rotulo: `Entrega atrasada ${-d}d`, classe: 'danger', dias: d, venc };
-    if (d <= ALERTA_ENTREGA_DIAS) return { etapa: 'entrega', rotulo: `Entregar ${textoDias(d)}`, classe: 'warn', dias: d, venc };
-    return { etapa: 'entrega', rotulo: `Entregar até ${fmtData(venc)}`, classe: 'info', dias: d, venc };
+    if (d < 0) return { etapa: 'entregar', rotulo: `Entrega atrasada ${-d}d`, classe: 'danger', acao: 'Entregar — prazo vencido', venc, atraso: true };
+    if (d <= ALERTA_ENTREGA_DIAS) return { etapa: 'entregar', rotulo: `Entregar ${textoDias(d)}`, classe: 'warn', acao: `Entregar até ${fmtData(venc)}`, venc };
+    return { etapa: 'entregar', rotulo: `Entregar até ${fmtData(venc)}`, classe: 'info', venc };
   }
 
-  function situacaoVigencia(lic) {
-    if (lic.resultado !== 'ganha' || !lic.vigenciaFim) return null;
-    const d = diasAte(lic.vigenciaFim);
-    if (d < 0) return { chave: 'encerrada', rotulo: 'Encerrada', classe: '', dias: d };
-    if (d <= ALERTA_VIGENCIA_DIAS) return { chave: 'vencendo', rotulo: `Termina ${textoDias(d)}`, classe: 'warn', dias: d };
-    return { chave: 'vigente', rotulo: `${d} dias restantes`, classe: 'ok', dias: d };
+  const totalPedidos = (l) => (l.pedidos || []).reduce((s, p) => s + (Number(p.valor) || 0), 0);
+  const saldo = (l) => (Number(l.valor) || 0) - totalPedidos(l);
+  const precisaAssinatura = (l) => l.instrumento !== 'empenho';
+
+  /** Status do contrato/ata e lista de ações nossas pendentes. */
+  function statusContrato(l) {
+    const acoes = [];
+    if (l.resultado === 'aguardando') {
+      if (l.dataSessao && diasAte(l.dataSessao) < -15) acoes.push({ texto: 'Atualizar o resultado da licitação', nivel: 'warn' });
+      return { chave: 'aguardando_resultado', rotulo: 'Aguardando resultado', classe: 'info', acoes };
+    }
+    if (l.resultado === 'perdida') return { chave: 'perdida', rotulo: 'Perdida', classe: '', acoes };
+
+    const e = l.etapas || {};
+    let st;
+    if (l.situacao === 'rescindido') st = { chave: 'rescindido', rotulo: 'Rescindido / cancelado', classe: 'danger' };
+    else if (l.situacao === 'suspenso') st = { chave: 'suspenso', rotulo: 'Suspenso', classe: 'warn' };
+    else if (l.vigenciaFim && diasAte(l.vigenciaFim) < 0) st = { chave: 'encerrado', rotulo: 'Encerrado', classe: '' };
+    else if (precisaAssinatura(l) && !e.assinadoNos) {
+      st = { chave: 'aguardando_assinatura', rotulo: 'Aguardando assinatura', classe: 'warn' };
+      acoes.push({ texto: 'Assinar e devolver ao órgão', nivel: e.recebido && diasAte(e.recebido) < -5 ? 'danger' : 'warn' });
+    } else if (precisaAssinatura(l) && !e.assinadoOrgao) {
+      st = { chave: 'aguardando_orgao', rotulo: 'Aguardando o órgão assinar', classe: 'info' };
+      if (diasAte(e.assinadoNos) < -COBRAR_ASSINATURA_DIAS) acoes.push({ texto: 'Cobrar a assinatura do órgão', nivel: 'warn' });
+    } else if (precisaAssinatura(l) && !e.publicado) {
+      st = { chave: 'assinado', rotulo: 'Assinado', classe: 'info' };
+    } else st = { chave: 'vigente', rotulo: 'Vigente', classe: 'ok' };
+
+    const ativo = !['encerrado', 'rescindido'].includes(st.chave);
+    if (ativo && !l.analista) acoes.push({ texto: 'Definir o analista responsável', nivel: 'warn' });
+    if (st.chave === 'vigente' && l.vigenciaFim) {
+      const d = diasAte(l.vigenciaFim);
+      if (d <= ALERTA_VIGENCIA_DIAS) acoes.push({ texto: `Vigência termina ${textoDias(d)} — avaliar aditivo`, nivel: d <= 30 ? 'danger' : 'warn' });
+    }
+    if (st.chave === 'vigente' && !l.vigenciaFim && precisaAssinatura(l)) acoes.push({ texto: 'Informar a vigência', nivel: 'warn' });
+    let atrasadas = 0, faturar = 0, cobrar = 0;
+    for (const p of l.pedidos) {
+      const s = situacaoPedido(l, p);
+      if (s.etapa === 'entregar' && s.atraso) atrasadas++;
+      else if (s.etapa === 'faturar') faturar++;
+      else if (s.etapa === 'receber' && s.atraso) cobrar++;
+    }
+    if (atrasadas) acoes.push({ texto: `${plural(atrasadas, 'entrega atrasada', 'entregas atrasadas')}`, nivel: 'danger' });
+    if (faturar) acoes.push({ texto: `${plural(faturar, 'nota fiscal a emitir', 'notas fiscais a emitir')}`, nivel: 'warn' });
+    if (cobrar) acoes.push({ texto: `${plural(cobrar, 'pagamento atrasado', 'pagamentos atrasados')}`, nivel: 'danger' });
+    return { ...st, acoes };
+  }
+  const emAndamento = (s) => !['encerrado', 'rescindido', 'perdida', 'aguardando_resultado'].includes(s.chave);
+  const urgencia = (s) => (s.acoes.some((a) => a.nivel === 'danger') ? 2 : s.acoes.length ? 1 : 0);
+
+  // ---------- Seleção por empresa ----------
+  const licsDaEmpresa = () => db.licitacoes.filter((l) => !ui.empresa || l.empresaId === ui.empresa);
+  function todosPedidos(lics = licsDaEmpresa()) {
+    const out = [];
+    for (const l of lics) {
+      if (l.resultado !== 'ganha') continue;
+      for (const p of l.pedidos) out.push({ l, p, s: situacaoPedido(l, p) });
+    }
+    return out;
   }
 
-  const totalPedidos = (lic) => (lic.pedidos || []).reduce((s, p) => s + (Number(p.valor) || 0), 0);
-  const saldo = (lic) => (Number(lic.valor) || 0) - totalPedidos(lic);
-
-  const RESULTADO = {
-    ganha: { rotulo: 'Ganha', classe: 'ok' },
-    aguardando: { rotulo: 'Aguardando', classe: 'info' },
-    perdida: { rotulo: 'Perdida', classe: '' },
-  };
-  const INSTRUMENTO = { ata: 'Ata RP', contrato: 'Contrato', empenho: 'Empenho/OF' };
-
-  /** Lista de todos os prazos (entregas, pagamentos, vigências). */
+  /** Todos os prazos (entregas, pagamentos, vigências). */
   function todosPrazos() {
     const out = [];
-    for (const lic of db.licitacoes) {
-      if (lic.resultado !== 'ganha') continue;
-      for (const p of lic.pedidos || []) {
-        const s = situacaoPedido(lic, p);
-        const base = { licId: lic.id, pedidoId: p.id, orgao: p.orgao || lic.orgao, valor: p.valor };
-        const desc = p.descricao && !p.pncp ? ' — ' + p.descricao : '';
-        const venc = vencimentoEntrega(lic, p);
+    for (const l of licsDaEmpresa()) {
+      if (l.resultado !== 'ganha') continue;
+      const st = statusContrato(l);
+      for (const p of l.pedidos) {
+        const s = situacaoPedido(l, p);
+        const base = { licId: l.id, pedidoId: p.id, orgao: p.orgao || l.orgao, valor: p.valor };
         out.push({
-          ...base, tipo: 'entrega', data: venc,
-          descricao: `Entrega do empenho ${p.numero}${desc}`,
-          concluido: !!p.dataEntrega,
-          situacao: p.dataEntrega ? { rotulo: `Entregue ${fmtData(p.dataEntrega)}`, classe: 'ok' } : s,
+          ...base, tipo: 'entrega', data: vencimentoEntrega(l, p), descricao: `Entrega do empenho ${p.numero}`,
+          concluido: !!p.dataEntrega, situacao: p.dataEntrega ? { rotulo: `Entregue ${fmtData(p.dataEntrega)}`, classe: 'ok' } : s,
         });
         if (p.dataEntrega) {
           out.push({
-            ...base, tipo: 'pagamento', data: vencimentoPagamento(lic, p),
-            descricao: `Pagamento do empenho ${p.numero}${p.nf ? ' (NF ' + p.nf + ')' : ''}`,
-            concluido: !!p.dataPagamento,
-            situacao: p.dataPagamento ? { rotulo: `Pago ${fmtData(p.dataPagamento)}`, classe: 'ok' } : s,
+            ...base, tipo: 'pagamento', data: vencimentoPagamento(l, p), descricao: `Pagamento do empenho ${p.numero}${p.nf ? ' (NF ' + p.nf + ')' : ''}`,
+            concluido: !!p.dataPagamento, situacao: p.dataPagamento ? { rotulo: `Pago ${fmtData(p.dataPagamento)}`, classe: 'ok' } : s,
           });
         }
       }
-      const v = situacaoVigencia(lic);
-      if (v) {
+      if (l.vigenciaFim && st.chave !== 'rescindido') {
+        const d = diasAte(l.vigenciaFim);
         out.push({
-          licId: lic.id, tipo: 'vigencia', data: lic.vigenciaFim, orgao: lic.orgao, valor: saldo(lic),
-          descricao: `Fim da vigência — ${INSTRUMENTO[lic.instrumento] || ''} ${lic.numeroInstrumento || lic.numero}`.trim(),
-          concluido: v.chave === 'encerrada',
-          situacao: v,
+          licId: l.id, tipo: 'vigencia', data: l.vigenciaFim, orgao: l.orgao, valor: saldo(l),
+          descricao: `Fim da vigência — ${INSTRUMENTO[l.instrumento] || ''} ${docNumero(l)}`, concluido: d < 0,
+          situacao: d < 0 ? { rotulo: 'Encerrada', classe: '' } : { rotulo: `Termina ${textoDias(d)}`, classe: d <= ALERTA_VIGENCIA_DIAS ? 'warn' : 'ok' },
         });
       }
     }
     return out.sort((a, b) => (a.data || '9999').localeCompare(b.data || '9999'));
   }
 
-  // ---------- Render ----------
-  const renderHooks = [];
+  // ---------- Render geral ----------
   function render() {
     renderHooks.forEach((fn) => fn());
+    preencherSelects();
+    renderChips();
+    renderTabs();
     renderPainel();
-    renderLicitacoes();
+    renderContratos();
+    renderPedidos();
     renderPrazos();
-    const aberta = $('#dlg-detalhe').open && $('#dlg-detalhe').dataset.id;
-    if (aberta) abrirDetalhe(aberta);
+    const dc = $('#dlg-contrato');
+    if (dc.open && dc.dataset.id) { renderContratoHead(); renderSecPedidos(); renderSecItens(); renderAnexosContrato(); }
   }
 
+  function renderChips() {
+    const emp = db.config.empresas;
+    const box = $('#chips-empresas');
+    if (!emp.length) { box.hidden = true; return; }
+    box.hidden = false;
+    if (ui.empresa && !emp.some((e) => e.id === ui.empresa)) ui.empresa = '';
+    const resumo = (lics) => {
+      const c = lics.filter((l) => emAndamento(statusContrato(l))).length;
+      const p = todosPedidos(lics).filter((x) => x.s.etapa !== 'pago').length;
+      return `${plural(c, 'contrato')} · ${plural(p, 'pedido')} em andamento`;
+    };
+    const chip = (id, nome, lics) => `<button class="chip ${ui.empresa === id ? 'active' : ''}" data-empresa="${id}">
+      <strong>${esc(nome)}</strong><span>${resumo(lics)}</span></button>`;
+    box.innerHTML = chip('', 'Todas as empresas', db.licitacoes) +
+      emp.map((e) => chip(e.id, nomeEmpresa(e), db.licitacoes.filter((l) => l.empresaId === e.id))).join('');
+  }
+
+  function renderTabs() {
+    $$('.tab').forEach((t) => t.classList.toggle('active', t.dataset.view === ui.view));
+    $$('.view').forEach((s) => s.classList.toggle('active', s.id === 'view-' + ui.view));
+    const lics = licsDaEmpresa();
+    const sts = lics.map(statusContrato);
+    $('#tab-s-contratos').textContent = `${sts.filter(emAndamento).length} em andamento`;
+    $('#tab-s-pedidos').textContent = `${todosPedidos().filter((x) => x.s.etapa !== 'pago').length} em andamento`;
+    const semana = todosPrazos().filter((p) => !p.concluido && p.data && diasAte(p.data) <= 7).length;
+    $('#tab-s-prazos').textContent = `${semana} nos próximos 7 dias`;
+    const acoes = sts.reduce((n, s) => n + (s.acoes.length ? 1 : 0), 0);
+    $('#tab-s-painel').textContent = acoes ? `${acoes} com ação pendente` : 'tudo em dia';
+  }
+
+  const kpi = (label, value, sub, classe = '') => `<div class="card kpi ${classe}"><div class="label">${esc(label)}</div><div class="value">${esc(value)}</div><div class="sub">${esc(sub)}</div></div>`;
+
+  // ---------- Painel ----------
   function renderPainel() {
-    const lics = db.licitacoes;
-    const ganhas = lics.filter((l) => l.resultado === 'ganha');
-    const decididas = lics.filter((l) => l.resultado !== 'aguardando').length;
-    const valorGanho = ganhas.reduce((s, l) => s + (Number(l.valor) || 0), 0);
-    let aReceber = 0, recebido = 0, saldoAtas = 0, entregasPend = 0;
-    for (const l of ganhas) {
-      const vig = situacaoVigencia(l);
-      if (!vig || vig.chave !== 'encerrada') saldoAtas += Math.max(0, saldo(l));
-      for (const p of l.pedidos || []) {
-        if (p.dataPagamento) recebido += Number(p.valor) || 0;
-        else if (p.dataEntrega) aReceber += Number(p.valor) || 0;
-        else entregasPend++;
-      }
+    const lics = licsDaEmpresa();
+    const ativos = lics.filter((l) => emAndamento(statusContrato(l)));
+    const peds = todosPedidos(lics);
+    const saldoTotal = ativos.reduce((s, l) => s + Math.max(0, saldo(l)), 0);
+    const aEntregar = peds.filter((x) => x.s.etapa === 'entregar');
+    const aReceber = peds.filter((x) => x.s.etapa === 'receber' || x.s.etapa === 'faturar');
+    const recebido = peds.filter((x) => x.s.etapa === 'pago').reduce((s, x) => s + (Number(x.p.valor) || 0), 0);
+    const comAcao = lics.filter((l) => statusContrato(l).acoes.length);
+    $('#kpis-painel').innerHTML = [
+      kpi('Contratos e atas em andamento', ativos.length, plural(lics.filter((l) => l.resultado === 'ganha').length, 'licitação ganha', 'licitações ganhas')),
+      kpi('Ação nossa pendente', comAcao.length, comAcao.length ? 'contratos/atas precisam de atenção' : 'tudo em dia', comAcao.length ? 'kpi-warn' : ''),
+      kpi('Saldo a executar', fmtMoeda(saldoTotal), 'em contratos/atas ativos'),
+      kpi('Pedidos a entregar', aEntregar.length, `${aEntregar.filter((x) => x.s.atraso).length} atrasados`, aEntregar.some((x) => x.s.atraso) ? 'kpi-danger' : ''),
+      kpi('A receber', fmtMoeda(aReceber.reduce((s, x) => s + (Number(x.p.valor) || 0), 0)), `${plural(aReceber.length, 'pedido')} entregues`),
+      kpi('Recebido', fmtMoeda(recebido), 'pagamentos confirmados'),
+    ].join('');
+
+    const itens = [];
+    for (const l of lics) {
+      const st = statusContrato(l);
+      for (const a of st.acoes) itens.push({ l, a });
     }
-    const taxa = decididas ? Math.round((ganhas.length / decididas) * 100) : 0;
-    const kpis = [
-      { label: 'Licitações ganhas', value: ganhas.length, sub: decididas ? `${taxa}% de êxito (${decididas} com resultado)` : 'nenhuma com resultado ainda' },
-      { label: 'Valor ganho', value: fmtMoeda(valorGanho), sub: 'soma das adjudicações' },
-      { label: 'Saldo a ser pedido', value: fmtMoeda(saldoAtas), sub: 'contratos/atas vigentes' },
-      { label: 'Entregas pendentes', value: entregasPend, sub: 'empenhos ainda não entregues' },
-      { label: 'A receber', value: fmtMoeda(aReceber), sub: 'entregue, aguardando pagamento' },
-      { label: 'Recebido', value: fmtMoeda(recebido), sub: 'pagamentos confirmados' },
-    ];
-    $('#kpis').innerHTML = kpis.map((k) => `
-      <div class="card kpi"><div class="label">${esc(k.label)}</div><div class="value">${esc(k.value)}</div><div class="sub">${esc(k.sub)}</div></div>`).join('');
-
-    const prazos = todosPrazos().filter((p) => !p.concluido);
-    const urgentes = prazos.filter((p) => {
-      if (p.tipo === 'vigencia') return p.situacao.chave === 'vencendo';
-      return p.situacao.classe === 'danger' || p.situacao.classe === 'warn';
-    });
-    const proximos = prazos.filter((p) => !urgentes.includes(p) && p.data && diasAte(p.data) >= 0).slice(0, 6);
-
-    // Licitações aguardando resultado há muito tempo também viram alerta
-    const semResultado = lics.filter((l) => l.resultado === 'aguardando' && l.dataSessao && diasAte(l.dataSessao) < -15);
-
-    const itemPrazo = (p) => `
-      <li data-lic="${p.licId}">
-        <span class="badge ${p.situacao.classe}">${esc(p.situacao.rotulo)}</span>
-        <div class="a-body">
-          <div class="a-title">${esc(p.descricao)}</div>
-          <div class="a-sub">${esc(p.orgao)} · ${fmtData(p.data)}${p.valor ? ' · ' + fmtMoeda(p.valor) : ''}</div>
-        </div>
-      </li>`;
-    const itemSemRes = (l) => `
-      <li data-lic="${l.id}">
-        <span class="badge">Sem resultado</span>
-        <div class="a-body">
-          <div class="a-title">${esc(l.numero)} — atualize o resultado</div>
-          <div class="a-sub">${esc(l.orgao)} · sessão em ${fmtData(l.dataSessao)}</div>
-        </div>
-      </li>`;
-
+    itens.sort((x, y) => (y.a.nivel === 'danger') - (x.a.nivel === 'danger'));
     const LIMITE = 8;
-    const todosAlertas = [...urgentes.map(itemPrazo), ...semResultado.map(itemSemRes)];
-    const mais = todosAlertas.length - LIMITE;
-    const alertasHtml = todosAlertas.slice(0, LIMITE).join('') +
-      (mais > 0 ? `<li class="ver-mais" data-ir="prazos">+ ${mais} outro${mais > 1 ? 's' : ''} — ver todos em Prazos →</li>` : '');
-    $('#alertas').innerHTML = alertasHtml || '<li class="none">Nada urgente. 🎉</li>';
-    $('#proximos').innerHTML = proximos.map(itemPrazo).join('') ||
-      `<li class="none">${lics.length ? 'Nenhum prazo futuro cadastrado.' : 'Importe suas licitações na aba PNCP, cadastre em “+ Nova licitação” ou carregue dados de exemplo no menu Backup.'}</li>`;
+    const li = ({ l, a }) => `<li data-lic="${l.id}">
+      <span class="badge ${a.nivel}">${a.nivel === 'danger' ? 'Urgente' : 'Pendente'}</span>
+      <div class="a-body"><div class="a-title">${esc(a.texto)}</div>
+      <div class="a-sub">${esc(INSTRUMENTO[l.instrumento] || 'Licitação')} ${esc(docNumero(l))} · ${esc(l.orgao)}</div></div></li>`;
+    $('#alertas').innerHTML = itens.slice(0, LIMITE).map(li).join('') +
+      (itens.length > LIMITE ? `<li class="ver-mais" data-ir="contratos" data-pill="acao">+ ${itens.length - LIMITE} — ver em Contratos →</li>` : '') ||
+      `<li class="none">${lics.length ? 'Nada pendente. 🎉' : 'Comece em “＋ Novo contrato / ata” ou importe da aba PNCP.'}</li>`;
+
+    const prox = todosPrazos().filter((p) => !p.concluido && p.data && diasAte(p.data) >= 0).slice(0, 7);
+    $('#proximos').innerHTML = prox.map((p) => `<li data-lic="${p.licId}" ${p.pedidoId ? `data-pedido="${p.pedidoId}"` : ''}>
+      <span class="badge ${p.situacao.classe}">${esc(textoDias(diasAte(p.data)))}</span>
+      <div class="a-body"><div class="a-title">${esc(p.descricao)}</div>
+      <div class="a-sub">${esc(p.orgao)} · ${fmtData(p.data)}${p.valor ? ' · ' + fmtMoeda(p.valor) : ''}</div></div></li>`).join('') ||
+      '<li class="none">Nenhum prazo futuro.</li>';
   }
 
-  function pendenciasLic(lic) {
-    if (lic.resultado !== 'ganha') return '';
-    const cont = { danger: 0, warn: 0, entregar: 0, receber: 0 };
-    for (const p of lic.pedidos || []) {
-      const s = situacaoPedido(lic, p);
-      if (s.classe === 'danger') cont.danger++;
-      else if (s.etapa === 'entrega') cont.entregar++;
-      else if (s.etapa === 'pagamento') cont.receber++;
-    }
-    const b = [];
-    if (cont.danger) b.push(`<span class="badge danger">${cont.danger} atrasado${cont.danger > 1 ? 's' : ''}</span>`);
-    if (cont.entregar) b.push(`<span class="badge warn">${cont.entregar} a entregar</span>`);
-    if (cont.receber) b.push(`<span class="badge info">${cont.receber} a receber</span>`);
-    return b.join(' ') || '<span class="muted">—</span>';
+  // ---------- Contratos ----------
+  const PILLS_C = [
+    ['andamento', 'Em andamento', (s) => emAndamento(s)],
+    ['acao', 'Ação nossa pendente', (s) => s.acoes.length > 0],
+    ['assinatura', 'Aguardando assinatura', (s) => s.chave === 'aguardando_assinatura' || s.chave === 'aguardando_orgao'],
+    ['assinado', 'Assinado', (s) => s.chave === 'assinado'],
+    ['vigente', 'Vigente', (s) => s.chave === 'vigente'],
+    ['suspenso', 'Suspenso', (s) => s.chave === 'suspenso'],
+    ['encerrado', 'Encerrado', (s) => s.chave === 'encerrado'],
+    ['rescindido', 'Rescindido / cancelado', (s) => s.chave === 'rescindido'],
+    ['resultado', 'Aguardando resultado', (s) => s.chave === 'aguardando_resultado'],
+    ['perdida', 'Perdidas', (s) => s.chave === 'perdida'],
+    ['todos', 'Todos', () => true],
+  ];
+
+  function listaContratos() {
+    const busca = $('#busca-contratos').value.trim().toLowerCase();
+    const pill = PILLS_C.find((p) => p[0] === ui.pillC) || PILLS_C[0];
+    const lista = licsDaEmpresa().map((l) => ({ l, s: statusContrato(l) }))
+      .filter(({ s }) => pill[2](s))
+      .filter(({ l }) => !busca || [l.orgao, l.numero, l.numeroInstrumento, l.objeto, l.processo, l.analista, nomeEmpresa(empresaDe(l)),
+        ...(l.itens || []).map((i) => i.descricao)].join(' ').toLowerCase().includes(busca));
+    const ordem = {
+      urgente: (a, b) => urgencia(b.s) - urgencia(a.s) || (a.l.vigenciaFim || '9999').localeCompare(b.l.vigenciaFim || '9999'),
+      vigencia: (a, b) => (a.l.vigenciaFim || '9999').localeCompare(b.l.vigenciaFim || '9999'),
+      recente: (a, b) => (b.l.etapas?.recebido || b.l.dataSessao || '').localeCompare(a.l.etapas?.recebido || a.l.dataSessao || ''),
+      saldo: (a, b) => saldo(b.l) - saldo(a.l),
+      orgao: (a, b) => a.l.orgao.localeCompare(b.l.orgao, 'pt-BR'),
+    }[ui.ordemC] || (() => 0);
+    return lista.sort(ordem);
   }
 
-  function renderLicitacoes() {
-    const busca = $('#f-busca').value.trim().toLowerCase();
-    const fr = $('#f-resultado').value;
-    const fs = $('#f-situacao').value;
-    const lista = db.licitacoes
-      .filter((l) => !fr || l.resultado === fr)
-      .filter((l) => !fs || situacaoVigencia(l)?.chave === fs)
-      .filter((l) => !busca || [l.orgao, l.numero, l.objeto, l.numeroInstrumento].join(' ').toLowerCase().includes(busca))
-      .sort((a, b) => (b.dataSessao || '').localeCompare(a.dataSessao || ''));
+  function renderContratos() {
+    const lics = licsDaEmpresa();
+    const sts = lics.map((l) => ({ l, s: statusContrato(l) }));
+    const aguard = sts.filter((x) => x.s.chave === 'aguardando_assinatura' || x.s.chave === 'aguardando_orgao');
+    const atrasadas = aguard.filter((x) => x.s.acoes.some((a) => a.nivel === 'danger' || /Cobrar/.test(a.texto))).length;
+    const vig = sts.filter((x) => x.s.chave === 'vigente');
+    const terminando = vig.filter((x) => x.l.vigenciaFim && diasAte(x.l.vigenciaFim) <= ALERTA_VIGENCIA_DIAS);
+    const enc = sts.filter((x) => x.s.chave === 'encerrado');
+    const naoExec = enc.reduce((s, x) => s + Math.max(0, saldo(x.l)), 0);
+    const prox = terminando.map((x) => diasAte(x.l.vigenciaFim)).sort((a, b) => a - b)[0];
+    $('#kpis-contratos').innerHTML = [
+      kpi('Aguardando assinatura', aguard.length, atrasadas ? `${atrasadas} com prazo passando` : 'Nenhum prazo vencido', atrasadas ? 'kpi-warn' : ''),
+      kpi('Vigentes', vig.length, `${fmtMoeda(vig.reduce((s, x) => s + Math.max(0, saldo(x.l)), 0))} de saldo a executar`),
+      kpi(`Vigência termina em ${ALERTA_VIGENCIA_DIAS} dias`, terminando.length, terminando.length ? `a próxima ${textoDias(prox)}` : 'Nenhum vencimento próximo', terminando.length ? 'kpi-warn' : ''),
+      kpi('Vigência encerrada', enc.length, naoExec ? `${fmtMoeda(naoExec)} de saldo não executado` : 'Tudo em dia'),
+    ].join('');
 
-    $('#tabela-licitacoes tbody').innerHTML = lista.map((l) => {
-      const r = RESULTADO[l.resultado] || RESULTADO.aguardando;
-      const v = situacaoVigencia(l);
+    $('#pills-contratos').innerHTML = PILLS_C.map(([k, rot, fn]) =>
+      `<button class="pill ${ui.pillC === k ? 'active' : ''}" data-pill-c="${k}">${rot} <b>${sts.filter((x) => fn(x.s)).length}</b></button>`).join('');
+    $('#ordem-contratos').value = ui.ordemC;
+
+    const lista = listaContratos();
+    const variasEmpresas = db.config.empresas.length > 1 && !ui.empresa;
+    $('#tabela-contratos tbody').innerHTML = lista.map(({ l, s }) => {
       const ganha = l.resultado === 'ganha';
-      return `
-        <tr class="clickable" data-lic="${l.id}">
-          <td><strong>${esc(l.orgao)}</strong><div class="muted">${esc(l.numero)}${l.dataSessao ? ' · ' + fmtData(l.dataSessao) : ''}</div></td>
-          <td>${esc(l.objeto) || '<span class="muted">—</span>'}</td>
-          <td><span class="badge ${r.classe}">${r.rotulo}</span></td>
-          <td class="num">${ganha ? fmtMoeda(l.valor) : '<span class="muted">—</span>'}</td>
-          <td class="num">${ganha ? fmtMoeda(saldo(l)) : '<span class="muted">—</span>'}</td>
-          <td>${v ? `<span class="badge ${v.classe}">${esc(v.rotulo)}</span><div class="muted">até ${fmtData(l.vigenciaFim)}</div>` : '<span class="muted">—</span>'}</td>
-          <td>${pendenciasLic(l)}</td>
-        </tr>`;
+      const total = Number(l.valor) || 0;
+      const exec = totalPedidos(l);
+      const pct = total ? Math.min(100, Math.round((exec / total) * 100)) : 0;
+      const u = urgencia(s);
+      return `<tr class="clickable urg-${u}" data-lic="${l.id}">
+        <td><div class="doc-tipo">${esc(ganha ? INSTRUMENTO[l.instrumento] || 'Contrato' : 'Licitação')}</div><div class="mono doc-num">${esc(docNumero(l))}</div>${l.anexos?.length ? `<div class="muted small">📎 ${l.anexos.length}</div>` : ''}</td>
+        <td><strong class="orgao">${esc(l.orgao)}</strong>
+          <div class="muted clamp1">${esc(l.numero)}${l.objeto ? ' — ' + esc(l.objeto) : ''}</div>
+          ${variasEmpresas && empresaDe(l) ? `<div class="emp-tag">${esc(nomeEmpresa(empresaDe(l)))}</div>` : ''}</td>
+        <td>${l.analista ? esc(l.analista) : ganha ? '<span class="badge warn">Indefinido</span>' : '<span class="muted">—</span>'}</td>
+        <td class="mono nowrap">${l.vigenciaInicio || l.vigenciaFim ? `${fmtData(l.vigenciaInicio)} a<br>${fmtData(l.vigenciaFim)}` : '<span class="muted">—</span>'}</td>
+        <td>${ganha && total ? `<div class="mono">${fmtMoeda(saldo(l))}</div><div class="progress"><span style="width:${pct}%"></span></div>
+          <div class="muted small">${pct}% executado de ${fmtMoeda(total)}</div>` : '<span class="muted">—</span>'}</td>
+        <td><span class="status ${s.classe}">${esc(s.rotulo)}</span>
+          ${s.acoes.length ? `<div class="acao ${s.acoes[0].nivel}">⚠ ${esc(s.acoes[0].texto)}${s.acoes.length > 1 ? ` <span class="mais">+${s.acoes.length - 1}</span>` : ''}</div>` : ''}</td>
+      </tr>`;
     }).join('');
-
-    const vazio = $('#vazio-licitacoes');
+    const vazio = $('#vazio-contratos');
     vazio.hidden = lista.length > 0;
-    vazio.textContent = db.licitacoes.length ? 'Nenhuma licitação encontrada com esses filtros.' : 'Nenhuma licitação cadastrada ainda.';
-    $('#tabela-licitacoes').parentElement.hidden = lista.length === 0;
+    vazio.innerHTML = lics.length ? 'Nenhum contrato com esses filtros.' : 'Nenhum contrato ainda. Use <strong>＋ Novo contrato / ata</strong> ou importe da aba <strong>PNCP</strong>.';
+    $('#tabela-contratos').parentElement.hidden = !lista.length;
   }
 
+  // ---------- Pedidos ----------
+  const PILLS_P = [
+    ['andamento', 'Em andamento', (x) => x.s.etapa !== 'pago'],
+    ['acao', 'Ação nossa pendente', (x) => !!x.s.acao],
+    ['entregar', 'A entregar', (x) => x.s.etapa === 'entregar'],
+    ['atrasados', 'Atrasados', (x) => !!x.s.atraso],
+    ['faturar', 'Emitir NF', (x) => x.s.etapa === 'faturar'],
+    ['receber', 'Aguardando pagamento', (x) => x.s.etapa === 'receber'],
+    ['pago', 'Pagos', (x) => x.s.etapa === 'pago'],
+    ['todos', 'Todos', () => true],
+  ];
+  const urgP = (x) => (x.s.atraso ? 3 : x.s.acao ? 2 : x.s.etapa === 'pago' ? 0 : 1);
+
+  function listaPedidos() {
+    const busca = $('#busca-pedidos').value.trim().toLowerCase();
+    const pill = PILLS_P.find((p) => p[0] === ui.pillP) || PILLS_P[0];
+    const lista = todosPedidos().filter(pill[2])
+      .filter(({ l, p }) => !busca || [p.numero, p.orgao, l.orgao, p.nf, p.descricao, l.numeroInstrumento, l.numero].join(' ').toLowerCase().includes(busca));
+    const venc = (x) => x.s.venc || '9999';
+    const ordem = {
+      urgente: (a, b) => urgP(b) - urgP(a) || venc(a).localeCompare(venc(b)),
+      recente: (a, b) => (b.p.dataRecebimento || '').localeCompare(a.p.dataRecebimento || ''),
+      valor: (a, b) => (Number(b.p.valor) || 0) - (Number(a.p.valor) || 0),
+      orgao: (a, b) => (a.p.orgao || a.l.orgao).localeCompare(b.p.orgao || b.l.orgao, 'pt-BR'),
+    }[ui.ordemP] || (() => 0);
+    return lista.sort(ordem);
+  }
+
+  function renderPedidos() {
+    const peds = todosPedidos();
+    const ent = peds.filter((x) => x.s.etapa === 'entregar');
+    const fat = peds.filter((x) => x.s.etapa === 'faturar');
+    const rec = peds.filter((x) => x.s.etapa === 'receber');
+    const soma = (arr) => arr.reduce((s, x) => s + (Number(x.p.valor) || 0), 0);
+    const ult30 = peds.filter((x) => x.p.dataPagamento && diasAte(x.p.dataPagamento) >= -30);
+    $('#kpis-pedidos').innerHTML = [
+      kpi('A entregar', ent.length, `${ent.filter((x) => x.s.atraso).length} atrasados · ${fmtMoeda(soma(ent))}`, ent.some((x) => x.s.atraso) ? 'kpi-danger' : ''),
+      kpi('Emitir nota fiscal', fat.length, fat.length ? `${fmtMoeda(soma(fat))} entregues sem NF` : 'Nada a faturar', fat.length ? 'kpi-warn' : ''),
+      kpi('Aguardando pagamento', fmtMoeda(soma(rec)), `${plural(rec.length, 'pedido')} · ${rec.filter((x) => x.s.atraso).length} atrasados`, rec.some((x) => x.s.atraso) ? 'kpi-danger' : ''),
+      kpi('Recebido em 30 dias', fmtMoeda(soma(ult30)), plural(ult30.length, 'pagamento')),
+    ].join('');
+    $('#pills-pedidos').innerHTML = PILLS_P.map(([k, rot, fn]) =>
+      `<button class="pill ${ui.pillP === k ? 'active' : ''}" data-pill-p="${k}">${rot} <b>${peds.filter(fn).length}</b></button>`).join('');
+    $('#ordem-pedidos').value = ui.ordemP;
+
+    const lista = listaPedidos();
+    const LIM = 300;
+    $('#tabela-pedidos tbody').innerHTML = lista.slice(0, LIM).map((x) => {
+      const { l, p, s } = x;
+      return `<tr class="clickable urg-${s.atraso ? 2 : s.acao ? 1 : 0}" data-lic="${l.id}" data-pedido="${p.id}">
+        <td><div class="mono doc-num">${esc(p.numero)}</div>${p.nf ? `<div class="muted small">NF ${esc(p.nf)}</div>` : ''}${p.anexos?.length ? `<div class="muted small">📎 ${p.anexos.length}</div>` : ''}</td>
+        <td><strong class="orgao">${esc(p.orgao || l.orgao)}</strong>${p.descricao ? `<div class="muted clamp1">${esc(p.descricao)}</div>` : ''}</td>
+        <td><div class="mono small">${esc(INSTRUMENTO[l.instrumento] || '')} ${esc(docNumero(l))}</div><div class="muted small clamp1">${esc(l.orgao)}</div></td>
+        <td class="mono nowrap">${fmtData(p.dataRecebimento)}</td>
+        <td class="mono nowrap">${p.dataEntrega ? `<span class="muted">entregue ${fmtData(p.dataEntrega)}</span>` : fmtData(vencimentoEntrega(l, p))}</td>
+        <td class="num mono">${fmtMoeda(p.valor)}</td>
+        <td><span class="status ${s.classe}">${esc(s.rotulo)}</span></td>
+      </tr>`;
+    }).join('') + (lista.length > LIM ? `<tr><td colspan="7" class="muted">Mostrando ${LIM} de ${lista.length}. Use a busca ou os filtros para encontrar os demais.</td></tr>` : '');
+    const vazio = $('#vazio-pedidos');
+    vazio.hidden = lista.length > 0;
+    vazio.textContent = peds.length ? 'Nenhum pedido com esses filtros.' : 'Nenhum empenho ainda. Abra um contrato/ata e use “＋ Novo empenho”, ou importe da aba PNCP.';
+    $('#tabela-pedidos').parentElement.hidden = !lista.length;
+  }
+
+  // ---------- Prazos ----------
+  const PILLS_Z = [['', 'Todos'], ['entrega', 'Entregas'], ['pagamento', 'Pagamentos'], ['vigencia', 'Vigências']];
   function renderPrazos() {
-    const tipo = $('#f-prazo-tipo').value;
     const conc = $('#f-prazo-concluidos').checked;
-    const lista = todosPrazos().filter((p) => (!tipo || p.tipo === tipo) && (conc || !p.concluido));
+    const todos = todosPrazos().filter((p) => conc || !p.concluido);
+    $('#pills-prazos').innerHTML = PILLS_Z.map(([k, rot]) =>
+      `<button class="pill ${ui.pillZ === k ? 'active' : ''}" data-pill-z="${k}">${rot} <b>${todos.filter((p) => !k || p.tipo === k).length}</b></button>`).join('');
+    const lista = todos.filter((p) => !ui.pillZ || p.tipo === ui.pillZ);
     const TIPO = { entrega: 'Entrega', pagamento: 'Pagamento', vigencia: 'Vigência' };
-    $('#tabela-prazos tbody').innerHTML = lista.map((p) => `
-      <tr class="clickable" data-lic="${p.licId}">
-        <td><strong>${fmtData(p.data)}</strong>${p.data && !p.concluido ? `<div class="muted">${textoDias(diasAte(p.data))}</div>` : ''}</td>
-        <td>${TIPO[p.tipo]}</td>
-        <td>${esc(p.descricao)}</td>
-        <td>${esc(p.orgao)}</td>
-        <td class="num">${p.valor ? fmtMoeda(p.valor) : '—'}</td>
-        <td><span class="badge ${p.situacao.classe}">${esc(p.situacao.rotulo)}</span></td>
+    $('#tabela-prazos tbody').innerHTML = lista.slice(0, 400).map((p) => `
+      <tr class="clickable" data-lic="${p.licId}" ${p.pedidoId ? `data-pedido="${p.pedidoId}"` : ''}>
+        <td class="mono nowrap"><strong>${fmtData(p.data)}</strong>${p.data && !p.concluido ? `<div class="muted small">${textoDias(diasAte(p.data))}</div>` : ''}</td>
+        <td>${TIPO[p.tipo]}</td><td>${esc(p.descricao)}</td><td>${esc(p.orgao)}</td>
+        <td class="num mono">${p.valor ? fmtMoeda(p.valor) : '—'}</td>
+        <td><span class="status ${p.situacao.classe}">${esc(p.situacao.rotulo)}</span></td>
       </tr>`).join('');
     $('#vazio-prazos').hidden = lista.length > 0;
-    $('#tabela-prazos').parentElement.hidden = lista.length === 0;
+    $('#tabela-prazos').parentElement.hidden = !lista.length;
   }
 
-  // ---------- Detalhe ----------
-  function abrirDetalhe(id) {
-    const lic = db.licitacoes.find((l) => l.id === id);
-    const dlg = $('#dlg-detalhe');
-    if (!lic) { dlg.close(); return; }
-    dlg.dataset.id = id;
-    const r = RESULTADO[lic.resultado] || RESULTADO.aguardando;
-    const v = situacaoVigencia(lic);
-    const ganha = lic.resultado === 'ganha';
-    const pedido = totalPedidos(lic);
-    const pct = lic.valor ? Math.min(100, Math.round((pedido / lic.valor) * 100)) : 0;
-    const pedidos = [...(lic.pedidos || [])].sort((a, b) => (b.dataRecebimento || '').localeCompare(a.dataRecebimento || ''));
+  // ---------- Formulários (leitura/escrita genérica) ----------
+  function preencherSelects() {
+    const emp = db.config.empresas;
+    for (const sel of $$('select[data-empresas]')) {
+      const v = sel.value;
+      sel.innerHTML = (emp.length ? '' : '<option value="">— Cadastre as empresas em “Empresas e analistas” —</option>') +
+        emp.map((e) => `<option value="${e.id}">${esc(nomeEmpresa(e))}${e.nome && e.cnpj ? ' — CNPJ ' + fmtCnpj(e.cnpj) : ''}</option>`).join('');
+      if (v) sel.value = v;
+    }
+    for (const sel of $$('select[data-analistas]')) {
+      const v = sel.value;
+      const nomes = [...db.config.analistas];
+      if (v && !nomes.includes(v)) nomes.push(v);
+      sel.innerHTML = '<option value="">Selecione o analista</option>' + nomes.map((n) => `<option>${esc(n)}</option>`).join('');
+      sel.value = v;
+    }
+  }
+  function escreverForm(form, obj) {
+    for (const el of form.elements) {
+      if (!el.name) continue;
+      const [a, b] = el.name.split('.');
+      let v = b ? obj[a]?.[b] : obj[a];
+      if (el.name === 'valor') v = moedaInput(v);
+      if (el.tagName === 'SELECT' && v && ![...el.options].some((o) => o.value === v)) {
+        el.insertAdjacentHTML('beforeend', `<option>${esc(v)}</option>`);
+      }
+      el.value = v ?? '';
+    }
+  }
+  function lerForm(form) {
+    const out = {};
+    for (const el of form.elements) {
+      if (!el.name) continue;
+      const [a, b] = el.name.split('.');
+      const v = el.name === 'valor' ? parseMoeda(el.value) : el.value.trim();
+      if (b) (out[a] ||= {})[b] = v; else out[a] = v;
+    }
+    return out;
+  }
+  function numerarSecoes(root) {
+    let n = 0;
+    for (const s of $$('.sec', root)) {
+      if (s.hidden || s.classList.contains('vazia')) continue;
+      const el = $('.sec-n', s);
+      if (el) el.textContent = ++n;
+    }
+  }
 
-    $('#detalhe-conteudo').innerHTML = `
-      <div class="det-head">
+  // ---------- Painel lateral: contrato / ata ----------
+  const dlgC = $('#dlg-contrato');
+  const formC = $('#form-contrato');
+  let sujoC = false;
+  const licAtual = () => db.licitacoes.find((l) => l.id === dlgC.dataset.id);
+
+  function abrirContrato(id = null) {
+    const lic = id ? db.licitacoes.find((l) => l.id === id) : null;
+    if (id && !lic) return;
+    dlgC.dataset.id = lic ? lic.id : '';
+    preencherSelects();
+    formC.reset();
+    const base = lic || {
+      resultado: 'ganha', instrumento: 'ata', modalidade: 'Pregão eletrônico',
+      empresaId: ui.empresa || db.config.empresas[0]?.id || '', etapas: { recebido: hojeISO() },
+    };
+    escreverForm(formC, base);
+    sujoC = false;
+    atualizarVisibilidadeC();
+    renderContratoHead();
+    renderSecItens();
+    renderSecPedidos();
+    renderAnexosContrato();
+    $('#btn-excluir-contrato').hidden = !lic;
+    $('#btn-salvar-contrato').textContent = lic ? 'Salvar alterações' : 'Lançar contrato / ata';
+    if (!dlgC.open) dlgC.showModal();
+    $('.drawer-body', dlgC).scrollTop = 0;
+    numerarSecoes(dlgC);
+  }
+
+  function atualizarVisibilidadeC() {
+    const ganha = formC.resultado.value === 'ganha';
+    const existe = !!dlgC.dataset.id;
+    for (const s of $$('.so-ganha', dlgC)) s.hidden = !ganha;
+    for (const s of $$('.so-existente', dlgC)) s.hidden = !ganha || !existe;
+    numerarSecoes(dlgC);
+  }
+
+  function rascunhoC() {
+    const lic = licAtual();
+    const f = lerForm(formC);
+    return { ...(lic || { pedidos: [], itens: [], anexos: [] }), ...f, etapas: { ...(lic?.etapas || {}), ...f.etapas } };
+  }
+
+  function renderContratoHead() {
+    const r = rascunhoC();
+    const novo = !dlgC.dataset.id;
+    const st = statusContrato(r);
+    const e = r.etapas || {};
+    const emp = db.config.empresas.find((x) => x.id === r.empresaId);
+    const ganha = r.resultado === 'ganha';
+    const passos = precisaAssinatura(r) ? [
+      ['recebido', 'Recebido', e.recebido], ['assinadoNos', 'Assinado por nós', e.assinadoNos],
+      ['assinadoOrgao', 'Assinado pelo órgão', e.assinadoOrgao], ['publicado', 'Publicado', e.publicado],
+      ['vigencia', 'Vigente até', r.vigenciaFim],
+    ] : [['recebido', 'Recebido', e.recebido], ['vigencia', 'Vigente até', r.vigenciaFim]];
+    const proximo = passos.find(([k, , v]) => !v && k !== 'vigencia');
+    $('#contrato-head').innerHTML = `
+      <div class="dh-top">
         <div>
-          <h2>${esc(lic.orgao)}</h2>
-          <div class="muted">${esc(lic.numero)} · ${esc(lic.modalidade || '')}${lic.dataSessao ? ' · sessão em ' + fmtData(lic.dataSessao) : ''}</div>
-          ${lic.objeto ? `<p>${esc(lic.objeto)}</p>` : ''}
-          <span class="badge ${r.classe}">${r.rotulo}</span>
-          ${v ? `<span class="badge ${v.classe}">Vigência: ${esc(v.rotulo)}</span>` : ''}
-          ${lic.link ? ` <a href="${esc(lic.link)}" target="_blank" rel="noopener">Abrir no portal ↗</a>` : ''}
+          ${emp ? `<div class="dh-emp">■ ${esc(nomeEmpresa(emp))}</div>` : ''}
+          <div class="muted">${esc(ganha ? INSTRUMENTO_LONGO[r.instrumento] || '' : 'Licitação')}</div>
+          <h2>${novo ? 'Novo contrato / ata' : esc(docNumero(r)) + ' <span class="dh-orgao">' + esc(r.orgao) + '</span>'}</h2>
         </div>
-        <div style="display:flex;gap:.5rem">
-          ${lic.pncp?.compra ? '<button class="btn" data-acao="pncp-atualizar" title="Buscar novos empenhos no PNCP">↻ PNCP</button>' : ''}
-          <button class="btn" data-acao="editar">Editar</button>
-          <button class="btn" data-close>Fechar</button>
-        </div>
+        <button type="button" class="x" data-close aria-label="Fechar">✕</button>
       </div>
-      ${ganha ? `
-      <div class="det-grid">
-        <div><div class="k">Valor ganho</div><div class="v">${fmtMoeda(lic.valor)}</div></div>
-        <div><div class="k">Já pedido (${pct}%)</div><div class="v">${fmtMoeda(pedido)}</div><div class="progress"><span style="width:${pct}%"></span></div></div>
-        <div><div class="k">Saldo</div><div class="v">${fmtMoeda(saldo(lic))}</div></div>
-        <div><div class="k">${esc(INSTRUMENTO[lic.instrumento] || 'Instrumento')}</div><div class="v">${esc(lic.numeroInstrumento) || '—'}</div></div>
-        <div><div class="k">Vigência</div><div class="v">${fmtData(lic.vigenciaInicio)} a ${fmtData(lic.vigenciaFim)}</div></div>
-        <div><div class="k">Prazos padrão</div><div class="v">Entrega ${lic.prazoEntregaDias || '—'}d · Pagto ${lic.prazoPagamentoDias || PRAZO_PAGAMENTO_PADRAO}d</div></div>
-        ${lic.contato ? `<div><div class="k">Contato</div><div class="v">${esc(lic.contato)}</div></div>` : ''}
+      <div class="dh-resumo">
+        <div><div class="k">Status</div><span class="status ${st.classe}">${esc(st.rotulo)}</span></div>
+        <div><div class="k">Analista</div><div class="v">${esc(r.analista) || '—'}</div></div>
+        ${ganha ? `<div><div class="k">Valor total</div><div class="v mono">${fmtMoeda(r.valor)}</div></div>
+        <div><div class="k">Empenhado</div><div class="v mono">${fmtMoeda(totalPedidos(r))}</div></div>
+        <div><div class="k">Saldo</div><div class="v mono">${fmtMoeda(saldo(r))}</div></div>` : ''}
       </div>
-      <div class="section-head">
-        <h3>Pedidos / empenhos (${pedidos.length})</h3>
-        <button class="btn primary small" data-acao="novo-pedido">+ Novo empenho</button>
-      </div>
-      ${pedidos.length ? `
-      <div class="table-wrap"><table class="table">
-        <thead><tr><th>Empenho / OF</th><th>Recebido</th><th>Entregar até</th><th>Entregue</th><th>Pago</th><th class="num">Valor</th><th>Situação</th><th></th></tr></thead>
-        <tbody>${pedidos.map((p) => {
-          const s = situacaoPedido(lic, p);
-          return `<tr>
-            <td><strong>${p.link ? `<a href="${esc(p.link)}" target="_blank" rel="noopener">${esc(p.numero)}</a>` : esc(p.numero)}</strong>${p.orgao ? `<div class="muted clamp1" title="${esc(p.orgao)}">${esc(p.orgao)}</div>` : ''}${p.descricao ? `<div class="muted clamp1" title="${esc(p.descricao)}">${esc(p.descricao)}</div>` : ''}</td>
-            <td>${fmtData(p.dataRecebimento)}</td>
-            <td>${fmtData(vencimentoEntrega(lic, p))}</td>
-            <td>${p.dataEntrega ? fmtData(p.dataEntrega) + (p.nf ? `<div class="muted">NF ${esc(p.nf)}</div>` : '') : `<button class="btn small" data-acao="entregar" data-pedido="${p.id}">Marcar entregue</button>`}</td>
-            <td>${p.dataPagamento ? fmtData(p.dataPagamento) : (p.dataEntrega ? `<button class="btn small" data-acao="pagar" data-pedido="${p.id}">Marcar pago</button>` : '—')}</td>
-            <td class="num">${fmtMoeda(p.valor)}</td>
-            <td><span class="badge ${s.classe}">${esc(s.rotulo)}</span></td>
-            <td><button class="btn small" data-acao="editar-pedido" data-pedido="${p.id}">Editar</button></td>
-          </tr>`;
-        }).join('')}</tbody>
-      </table></div>` : '<p class="muted">Nenhum empenho recebido ainda. Quando o órgão enviar a nota de empenho ou ordem de fornecimento, cadastre aqui para controlar o prazo de entrega.</p>'}
-      ${lic.itens?.length ? `
-      <div class="section-head"><h3>Itens ganhos (${lic.itens.length})</h3><span class="badge info">via PNCP</span></div>
-      <div class="table-wrap"><table class="table">
-        <thead><tr><th>Item</th><th>Descrição</th><th class="num">Qtd.</th><th class="num">Valor unit.</th><th class="num">Total</th></tr></thead>
-        <tbody>${lic.itens.map((it) => `<tr>
-          <td>${it.numero}</td>
-          <td><div class="clamp">${esc(it.descricao)}</div></td>
-          <td class="num">${Number(it.quantidade).toLocaleString('pt-BR')} <span class="muted">${esc(it.unidade || '')}</span></td>
-          <td class="num">${fmtMoeda(it.valorUnit)}</td>
-          <td class="num">${fmtMoeda(it.valorTotal)}</td>
-        </tr>`).join('')}</tbody>
-      </table></div>` : ''}
-      ` : `<p class="muted">${lic.resultado === 'aguardando' ? 'Quando sair o resultado, edite a licitação e marque como “Ganha” para controlar contrato, empenhos, entregas e pagamentos.' : 'Licitação perdida.'}</p>`}
-      ${lic.obs ? `<h3>Observações</h3><p style="white-space:pre-wrap">${esc(lic.obs)}</p>` : ''}
-    `;
-    if (!dlg.open) dlg.showModal();
+      ${ganha ? `<ol class="passos">${passos.map(([k, rot, v]) => `
+        <li class="${v ? 'feito' : ''} ${proximo && proximo[0] === k ? 'proximo' : ''}">
+          ${!v && k !== 'vigencia' ? `<button type="button" class="passo-btn" data-passo="${k}" title="Marcar como feito hoje">${rot}</button>` : `<span class="passo-rot">${rot}</span>`}
+          <span class="mono passo-data">${v ? fmtData(v) : '—'}</span>
+        </li>`).join('')}</ol>` : ''}
+      ${st.acoes.length ? `<div class="dh-acoes">${st.acoes.map((a) => `<span class="acao ${a.nivel}">⚠ ${esc(a.texto)}</span>`).join('')}</div>` : ''}
+      ${ganha && proximo ? `<button type="button" class="btn small" data-passo="${proximo[0]}">✓ Marcar “${proximo[1]}” como feito hoje</button>` : ''}`;
   }
 
-  $('#dlg-detalhe').addEventListener('click', (e) => {
-    const btn = e.target.closest('[data-acao]');
-    if (!btn) return;
-    const lic = db.licitacoes.find((l) => l.id === $('#dlg-detalhe').dataset.id);
-    if (!lic) return;
-    const acao = btn.dataset.acao;
-    const p = lic.pedidos?.find((x) => x.id === btn.dataset.pedido);
-    if (acao === 'editar') abrirFormLicitacao(lic);
-    else if (acao === 'pncp-atualizar') window.PNCP?.atualizarLicitacao(lic);
-    else if (acao === 'novo-pedido') abrirFormPedido(lic);
-    else if (acao === 'editar-pedido') abrirFormPedido(lic, p);
-    else if (acao === 'entregar' && p) { p.dataEntrega = toISO(hoje()); salvar(); toast('Entrega registrada hoje. Edite para ajustar a data ou incluir a NF.'); }
-    else if (acao === 'pagar' && p) { p.dataPagamento = toISO(hoje()); salvar(); toast('Pagamento registrado.'); }
+  function renderSecItens() {
+    const sec = $('#sec-itens');
+    const lic = licAtual();
+    const itens = lic?.itens || [];
+    if (!itens.length) { sec.innerHTML = ''; sec.classList.add('vazia'); numerarSecoes(dlgC); return; }
+    sec.classList.remove('vazia');
+    sec.innerHTML = `<div class="sec-head"><h3><span class="sec-n"></span> Itens ganhos (${itens.length})</h3><span class="muted">via PNCP</span></div>
+      <div class="table-wrap"><table class="table compact">
+        <thead><tr><th>Item</th><th>Descrição</th><th class="num">Qtd.</th><th class="num">Unit.</th><th class="num">Total</th></tr></thead>
+        <tbody>${itens.map((it) => `<tr><td class="mono">${it.numero}</td><td><div class="clamp">${esc(it.descricao)}</div></td>
+          <td class="num mono">${Number(it.quantidade).toLocaleString('pt-BR')} <span class="muted small">${esc(it.unidade || '')}</span></td>
+          <td class="num mono">${fmtMoeda(it.valorUnit)}</td><td class="num mono">${fmtMoeda(it.valorTotal)}</td></tr>`).join('')}</tbody>
+      </table></div>`;
+    numerarSecoes(dlgC);
+  }
+
+  function renderSecPedidos() {
+    const sec = $('#sec-pedidos');
+    const lic = licAtual();
+    if (!lic) { sec.innerHTML = ''; return; }
+    const peds = [...lic.pedidos].sort((a, b) => (b.dataRecebimento || '').localeCompare(a.dataRecebimento || ''));
+    sec.innerHTML = `<div class="sec-head"><h3><span class="sec-n"></span> Pedidos e empenhos (${peds.length})</h3>
+        <button type="button" class="btn primary small" data-novo-pedido>＋ Novo empenho</button></div>
+      ${peds.length ? `<div class="table-wrap"><table class="table compact">
+        <thead><tr><th>Empenho / OF</th><th>Recebido</th><th>Entregar até</th><th class="num">Valor</th><th>Status</th></tr></thead>
+        <tbody>${peds.map((p) => { const s = situacaoPedido(lic, p); return `<tr class="clickable" data-abrir-pedido="${p.id}">
+          <td><span class="mono">${esc(p.numero)}</span>${p.orgao ? `<div class="muted small clamp1">${esc(p.orgao)}</div>` : ''}</td>
+          <td class="mono">${fmtData(p.dataRecebimento)}</td><td class="mono">${fmtData(vencimentoEntrega(lic, p))}</td>
+          <td class="num mono">${fmtMoeda(p.valor)}</td><td><span class="status ${s.classe}">${esc(s.rotulo)}</span></td></tr>`; }).join('')}</tbody>
+      </table></div>` : '<p class="muted">Nenhum empenho ainda. Quando o órgão mandar a nota de empenho ou ordem de fornecimento, registre aqui para controlar entrega e pagamento.</p>'}`;
+    numerarSecoes(dlgC);
+  }
+
+  function renderAnexosContrato() {
+    renderAnexos($('[data-anexos="contrato"]', dlgC), licAtual(), 'contrato');
+  }
+
+  formC.addEventListener('input', (e) => {
+    if (e.target.closest('.anexos')) return;
+    sujoC = true;
+    if (e.target.name === 'resultado' || e.target.name === 'instrumento') atualizarVisibilidadeC();
+    renderContratoHead();
+  });
+  formC.addEventListener('change', (e) => {
+    if (e.target.closest('.anexos')) return;
+    sujoC = true;
+    renderContratoHead();
   });
 
-  // ---------- Formulários ----------
-  const formLic = $('#form-licitacao');
-  const dlgLic = $('#dlg-licitacao');
-  let editandoLic = null;
-
-  function toggleGanha() {
-    $('.so-ganha', formLic).hidden = formLic.resultado.value !== 'ganha';
-  }
-  formLic.resultado.addEventListener('change', toggleGanha);
-
-  function abrirFormLicitacao(lic = null) {
-    editandoLic = lic;
-    formLic.reset();
-    $('#dlg-licitacao-titulo').textContent = lic ? 'Editar licitação' : 'Nova licitação';
-    $('#btn-excluir-licitacao').hidden = !lic;
-    if (lic) {
-      for (const el of formLic.elements) {
-        if (!el.name || !(el.name in lic)) continue;
-        el.value = el.name === 'valor' ? moedaInput(lic.valor) : (lic[el.name] ?? '');
-      }
-    }
-    toggleGanha();
-    dlgLic.showModal();
-  }
-
-  formLic.addEventListener('submit', (e) => {
-    e.preventDefault();
-    const data = Object.fromEntries(new FormData(formLic));
-    data.valor = parseMoeda(data.valor);
-    if (data.vigenciaInicio && data.vigenciaFim && data.vigenciaFim < data.vigenciaInicio) {
-      toast('O fim da vigência é antes do início.');
+  dlgC.addEventListener('click', (e) => {
+    const passo = e.target.closest('[data-passo]');
+    if (passo) {
+      const k = passo.dataset.passo;
+      const campo = formC.elements['etapas.' + k];
+      if (campo && !campo.value) { campo.value = hojeISO(); sujoC = true; renderContratoHead(); toast('Data preenchida com hoje. Clique em Salvar para confirmar.'); }
       return;
     }
-    if (editandoLic) Object.assign(editandoLic, data);
-    else db.licitacoes.push({ id: uid(), pedidos: [], ...data });
-    dlgLic.close();
-    salvar();
-    toast('Licitação salva.');
+    if (e.target.closest('[data-novo-pedido]')) { abrirPedido(dlgC.dataset.id, null); return; }
+    const ap = e.target.closest('[data-abrir-pedido]');
+    if (ap) abrirPedido(dlgC.dataset.id, ap.dataset.abrirPedido);
   });
 
-  $('#btn-excluir-licitacao').addEventListener('click', () => {
-    if (!editandoLic || !confirm(`Excluir a licitação ${editandoLic.numero} e todos os seus empenhos?`)) return;
-    db.licitacoes = db.licitacoes.filter((l) => l !== editandoLic);
-    dlgLic.close();
-    $('#dlg-detalhe').close();
+  formC.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const f = lerForm(formC);
+    if (!f.orgao || !f.numero) { toast('Preencha o órgão e o nº da licitação.'); (f.orgao ? formC.numero : formC.orgao).focus(); return; }
+    if (db.config.empresas.length && !f.empresaId) { toast('Escolha a empresa.'); return; }
+    if (f.vigenciaInicio && f.vigenciaFim && f.vigenciaFim < f.vigenciaInicio) { toast('O fim da vigência está antes do início.'); return; }
+    let lic = licAtual();
+    const novo = !lic;
+    if (lic) Object.assign(lic, f, { etapas: { ...lic.etapas, ...f.etapas } });
+    else { lic = { id: uid(), pedidos: [], itens: [], anexos: [], pncp: null, ...f }; db.licitacoes.push(lic); }
+    sujoC = false;
     salvar();
-    toast('Licitação excluída.');
-  });
-
-  const formPed = $('#form-pedido');
-  const dlgPed = $('#dlg-pedido');
-  let pedCtx = null;
-
-  function abrirFormPedido(lic, p = null) {
-    pedCtx = { lic, p };
-    formPed.reset();
-    $('#dlg-pedido-titulo').textContent = p ? `Editar empenho ${p.numero}` : 'Novo pedido / empenho';
-    $('#btn-excluir-pedido').hidden = !p;
-    if (p) {
-      for (const el of formPed.elements) {
-        if (!el.name || !(el.name in p)) continue;
-        el.value = el.name === 'valor' ? moedaInput(p.valor) : (p[el.name] ?? '');
-      }
+    if (novo) {
+      abrirContrato(lic.id);
+      toast('Contrato lançado. Agora você pode anexar documentos e registrar empenhos.');
     } else {
-      formPed.dataRecebimento.value = toISO(hoje());
-      formPed.prazoDias.value = lic.prazoEntregaDias || '';
+      toast('Alterações salvas.');
     }
-    dlgPed.showModal();
+  });
+
+  function fecharContrato() {
+    if (sujoC && !confirm('Há alterações não salvas. Descartar?')) return;
+    sujoC = false;
+    dlgC.close();
+  }
+  dlgC.addEventListener('cancel', (e) => { e.preventDefault(); fecharContrato(); });
+
+  $('#btn-excluir-contrato').addEventListener('click', () => {
+    const lic = licAtual();
+    if (!lic || !confirm(`Excluir ${docNumero(lic)} (${lic.orgao}) com todos os empenhos e documentos?`)) return;
+    const anexos = [...lic.anexos, ...lic.pedidos.flatMap((p) => p.anexos || [])];
+    db.licitacoes = db.licitacoes.filter((l) => l !== lic);
+    sujoC = false;
+    dlgC.close();
+    salvar();
+    for (const a of anexos) window.Arquivos?.excluir(a).catch(() => {});
+    toast('Excluído.');
+  });
+
+  // ---------- Painel lateral: pedido / empenho ----------
+  const dlgP = $('#dlg-pedido');
+  const formP = $('#form-pedido');
+  let ctxP = null; // {lic, p}
+  let sujoP = false;
+
+  function abrirPedido(licId, pedidoId) {
+    const lic = db.licitacoes.find((l) => l.id === licId);
+    if (!lic) return;
+    const p = pedidoId ? lic.pedidos.find((x) => x.id === pedidoId) : null;
+    ctxP = { lic, p };
+    formP.reset();
+    escreverForm(formP, p || { dataRecebimento: hojeISO(), prazoDias: lic.prazoEntregaDias || '' });
+    sujoP = false;
+    $('#btn-excluir-pedido').hidden = !p;
+    $('#btn-salvar-pedido').textContent = p ? 'Salvar alterações' : 'Registrar empenho';
+    renderPedidoHead();
+    renderAnexos($('[data-anexos="pedido"]', dlgP), p, 'pedido');
+    if (!dlgP.open) dlgP.showModal();
+    $('.drawer-body', dlgP).scrollTop = 0;
   }
 
-  formPed.addEventListener('submit', (e) => {
-    e.preventDefault();
-    const data = Object.fromEntries(new FormData(formPed));
-    data.valor = parseMoeda(data.valor);
-    const { lic, p } = pedCtx;
-    if (p) Object.assign(p, data);
-    else (lic.pedidos ||= []).push({ id: uid(), ...data });
-    dlgPed.close();
-    salvar();
-    if (!p && saldo(lic) < 0) toast('Atenção: os empenhos já ultrapassam o valor ganho.');
-    else toast('Empenho salvo.');
+  function renderPedidoHead() {
+    const { lic, p } = ctxP;
+    const r = { ...(p || {}), ...lerForm(formP) };
+    const s = situacaoPedido(lic, r);
+    const emp = empresaDe(lic);
+    const passos = [['dataRecebimento', 'Recebido', r.dataRecebimento], ['dataEntrega', 'Entregue', r.dataEntrega],
+      ['dataNF', 'NF emitida', r.dataNF], ['dataPagamento', 'Pago', r.dataPagamento]];
+    const proximo = passos.find(([, , v]) => !v);
+    const vp = vencimentoPagamento(lic, r);
+    $('#pedido-head').innerHTML = `
+      <div class="dh-top">
+        <div>
+          ${emp ? `<div class="dh-emp">■ ${esc(nomeEmpresa(emp))}</div>` : ''}
+          <div class="muted">${esc(INSTRUMENTO[lic.instrumento] || '')} ${esc(docNumero(lic))} · ${esc(lic.orgao)}</div>
+          <h2>${p ? 'Empenho <span class="mono">' + esc(p.numero) + '</span>' : 'Novo empenho / OF'}</h2>
+        </div>
+        <button type="button" class="x" data-close aria-label="Fechar">✕</button>
+      </div>
+      <div class="dh-resumo">
+        <div><div class="k">Status</div><span class="status ${s.classe}">${esc(s.rotulo)}</span></div>
+        <div><div class="k">Valor</div><div class="v mono">${fmtMoeda(r.valor)}</div></div>
+        <div><div class="k">Entregar até</div><div class="v mono">${fmtData(vencimentoEntrega(lic, r))}</div></div>
+        <div><div class="k">Pagamento previsto</div><div class="v mono">${fmtData(vp)}</div></div>
+      </div>
+      <ol class="passos">${passos.map(([k, rot, v]) => `<li class="${v ? 'feito' : ''} ${proximo && proximo[0] === k ? 'proximo' : ''}">
+        ${v ? `<span class="passo-rot">${rot}</span>` : `<button type="button" class="passo-btn" data-passo-p="${k}" title="Marcar como feito hoje">${rot}</button>`}
+        <span class="mono passo-data">${v ? fmtData(v) : '—'}</span></li>`).join('')}</ol>
+      ${s.acao ? `<div class="dh-acoes"><span class="acao ${s.classe === 'danger' ? 'danger' : 'warn'}">⚠ ${esc(s.acao)}</span></div>` : ''}
+      ${proximo && proximo[0] !== 'dataRecebimento' ? `<button type="button" class="btn small" data-passo-p="${proximo[0]}">✓ Marcar “${proximo[1]}” como feito hoje</button>` : ''}`;
+  }
+
+  formP.addEventListener('input', (e) => { if (e.target.closest('.anexos')) return; sujoP = true; renderPedidoHead(); });
+  dlgP.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-passo-p]');
+    if (!b) return;
+    const campo = formP.elements[b.dataset.passoP];
+    if (campo && !campo.value) {
+      campo.value = hojeISO();
+      sujoP = true;
+      renderPedidoHead();
+      if (b.dataset.passoP === 'dataNF' && !formP.nf.value) { formP.nf.focus(); toast('Informe o número da nota fiscal e salve.'); }
+      else toast('Data preenchida com hoje. Clique em Salvar para confirmar.');
+    }
   });
 
-  $('#btn-excluir-pedido').addEventListener('click', () => {
-    const { lic, p } = pedCtx;
-    if (!p || !confirm(`Excluir o empenho ${p.numero}?`)) return;
-    lic.pedidos = lic.pedidos.filter((x) => x !== p);
-    dlgPed.close();
+  formP.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const f = lerForm(formP);
+    if (!f.numero || !f.dataRecebimento) { toast('Preencha o nº do empenho e a data de recebimento.'); return; }
+    if (f.dataNF && !f.nf) { toast('Informe o número da nota fiscal.'); formP.nf.focus(); return; }
+    const { lic, p } = ctxP;
+    if (p) Object.assign(p, f);
+    else {
+      const novo = { id: uid(), anexos: [], ...f };
+      lic.pedidos.push(novo);
+      ctxP.p = novo;
+    }
+    sujoP = false;
     salvar();
+    if (!p) {
+      abrirPedido(lic.id, ctxP.p.id);
+      toast(saldo(lic) < 0 ? 'Empenho registrado. Atenção: os empenhos já passam do valor do contrato.' : 'Empenho registrado. Você pode anexar a nota de empenho abaixo.');
+    } else toast('Alterações salvas.');
+  });
+
+  function fecharPedido() {
+    if (sujoP && !confirm('Há alterações não salvas neste empenho. Descartar?')) return;
+    sujoP = false;
+    dlgP.close();
+  }
+  dlgP.addEventListener('cancel', (e) => { e.preventDefault(); fecharPedido(); });
+
+  $('#btn-excluir-pedido').addEventListener('click', () => {
+    const { lic, p } = ctxP;
+    if (!p || !confirm(`Excluir o empenho ${p.numero} e seus documentos?`)) return;
+    lic.pedidos = lic.pedidos.filter((x) => x !== p);
+    for (const a of p.anexos || []) window.Arquivos?.excluir(a).catch(() => {});
+    sujoP = false;
+    dlgP.close();
+    salvar();
+    toast('Empenho excluído.');
+  });
+
+  // ---------- Documentos anexos ----------
+  const CATEGORIAS = {
+    contrato: ['Ata de registro de preços', 'Contrato', 'Publicação', 'Termo aditivo', 'Edital', 'Proposta', 'Outro'],
+    pedido: ['Nota de empenho', 'Ordem de fornecimento', 'Nota fiscal', 'Canhoto / comprovante de entrega', 'Comprovante de pagamento', 'Outro'],
+  };
+  const ICONE = (m = '', n = '') => (/pdf/.test(m) || /\.pdf$/i.test(n) ? '📄' : /image/.test(m) ? '🖼️' : /sheet|excel|csv/.test(m) || /\.(xlsx?|csv)$/i.test(n) ? '📊' : /word|doc/.test(m) ? '📝' : '📎');
+  const MAX_MB = 25;
+
+  function renderAnexos(box, dono, tipo) {
+    box._dono = dono;
+    if (!dono) {
+      box.innerHTML = `<p class="muted">${tipo === 'contrato' ? 'Lance o contrato/ata' : 'Registre o empenho'} para poder anexar documentos.</p>`;
+      return;
+    }
+    const lista = dono.anexos || [];
+    const onde = window.Arquivos?.onde() === 'nuvem' ? 'guardados na sua conta' : 'guardados neste navegador';
+    box.innerHTML = `
+      ${lista.length ? `<ul class="anexo-lista">${lista.map((a) => `<li>
+        <span class="anexo-ico">${ICONE(a.mime, a.nome)}</span>
+        <div class="anexo-info"><button type="button" class="link anexo-nome" data-anexo-abrir="${a.id}">${esc(a.nome)}</button>
+          <div class="muted small">${esc(a.categoria)} · ${fmtTamanho(a.tamanho || 0)} · ${fmtData(a.data)}</div></div>
+        <button type="button" class="btn small" data-anexo-baixar="${a.id}">Baixar</button>
+        <button type="button" class="btn small danger" data-anexo-excluir="${a.id}" aria-label="Excluir">✕</button>
+      </li>`).join('')}</ul>` : ''}
+      <div class="dropzone">
+        <select class="anexo-cat" aria-label="Tipo de documento">${CATEGORIAS[tipo].map((c) => `<option>${c}</option>`).join('')}</select>
+        <label class="btn small">Escolher arquivo<input type="file" class="anexo-input" multiple hidden></label>
+        <span class="muted small">ou arraste aqui · até ${MAX_MB} MB · ${onde}</span>
+      </div>`;
+  }
+
+  async function enviarArquivos(box, files) {
+    const dono = box._dono;
+    if (!dono || !window.Arquivos) return;
+    const cat = $('.anexo-cat', box)?.value || 'Outro';
+    for (const file of files) {
+      if (file.size > MAX_MB * 1048576) { toast(`${file.name}: maior que ${MAX_MB} MB.`); continue; }
+      const anexo = { id: uid(), nome: file.name, categoria: cat, tamanho: file.size, mime: file.type, data: hojeISO() };
+      toast(`Enviando ${file.name}…`);
+      try {
+        Object.assign(anexo, await window.Arquivos.salvar(anexo, file));
+        (dono.anexos ||= []).push(anexo);
+        salvar(false);
+        toast('Documento anexado.');
+      } catch (e) {
+        toast(`Não foi possível anexar ${file.name}: ${e.message}`);
+      }
+    }
+    refreshAnexos(box);
+  }
+  function refreshAnexos(box) {
+    renderAnexos(box, box._dono, box.dataset.anexos);
+    render();
+  }
+  const acharAnexo = (box, id) => (box._dono?.anexos || []).find((a) => a.id === id);
+
+  document.addEventListener('change', (e) => {
+    if (e.target.classList.contains('anexo-input')) {
+      const box = e.target.closest('.anexos');
+      enviarArquivos(box, [...e.target.files]);
+      e.target.value = '';
+    }
+  });
+  document.addEventListener('dragover', (e) => {
+    const dz = e.target.closest?.('.dropzone');
+    if (dz) { e.preventDefault(); dz.classList.add('over'); }
+  });
+  document.addEventListener('dragleave', (e) => e.target.closest?.('.dropzone')?.classList.remove('over'));
+  document.addEventListener('drop', (e) => {
+    const dz = e.target.closest?.('.dropzone');
+    if (!dz) return;
+    e.preventDefault();
+    dz.classList.remove('over');
+    enviarArquivos(dz.closest('.anexos'), [...e.dataTransfer.files]);
+  });
+
+  document.addEventListener('click', async (e) => {
+    const btn = e.target.closest('[data-anexo-abrir], [data-anexo-baixar], [data-anexo-excluir]');
+    if (!btn) return;
+    const box = btn.closest('.anexos');
+    const id = btn.dataset.anexoAbrir || btn.dataset.anexoBaixar || btn.dataset.anexoExcluir;
+    const a = acharAnexo(box, id);
+    if (!a) return;
+    if (btn.dataset.anexoExcluir) {
+      if (!confirm(`Excluir o documento “${a.nome}”?`)) return;
+      try { await window.Arquivos.excluir(a); } catch (err) { /* segue removendo da lista */ }
+      box._dono.anexos = box._dono.anexos.filter((x) => x !== a);
+      salvar(false);
+      refreshAnexos(box);
+      toast('Documento excluído.');
+      return;
+    }
+    const abrir = !!btn.dataset.anexoAbrir;
+    const janela = abrir ? window.open('', '_blank') : null; // abre já, para o navegador não bloquear
+    try {
+      const blob = await window.Arquivos.abrir(a);
+      const url = URL.createObjectURL(blob.type ? blob : new Blob([blob], { type: a.mime || 'application/octet-stream' }));
+      if (janela) janela.location = url;
+      else {
+        const link = document.createElement('a');
+        link.href = url; link.download = a.nome; link.click();
+      }
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch (err) {
+      janela?.close();
+      toast(`Não foi possível abrir: ${err.message}`);
+    }
+  });
+
+  // ---------- Empresas e analistas ----------
+  const dlgE = $('#dlg-empresas');
+  function renderEmpresas() {
+    const cfg = db.config;
+    $('#lista-empresas').innerHTML = cfg.empresas.map((e) => `<div class="edit-row" data-emp="${e.id}">
+      <input value="${esc(e.nome)}" data-campo="nome" placeholder="Nome da empresa">
+      <input value="${esc(fmtCnpj(e.cnpj))}" data-campo="cnpj" placeholder="CNPJ" inputmode="numeric">
+      <button class="btn small danger" data-rem-emp="${e.id}" aria-label="Remover">✕</button></div>`).join('') || '<p class="muted small">Nenhuma empresa cadastrada.</p>';
+    $('#lista-analistas').innerHTML = cfg.analistas.map((n, i) => `<div class="edit-row">
+      <input value="${esc(n)}" data-analista="${i}"><button class="btn small danger" data-rem-ana="${i}" aria-label="Remover">✕</button></div>`).join('') || '<p class="muted small">Nenhum analista cadastrado.</p>';
+  }
+  function abrirEmpresas() { renderEmpresas(); dlgE.showModal(); }
+  $('#btn-empresas').addEventListener('click', abrirEmpresas);
+  $('#btn-empresas-menu').addEventListener('click', () => { $('.menu').removeAttribute('open'); abrirEmpresas(); });
+
+  $('#form-add-empresa').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const f = e.target;
+    const cnpj = soDigitos(f.cnpj.value);
+    if (cnpj.length !== 14) { toast('CNPJ precisa ter 14 dígitos.'); return; }
+    if (db.config.empresas.some((x) => x.cnpj === cnpj)) { toast('Esse CNPJ já está cadastrado.'); return; }
+    const emp = { id: uid(), nome: f.nome.value.trim(), cnpj };
+    db.config.empresas.push(emp);
+    if (db.config.empresas.length === 1) for (const l of db.licitacoes) if (!l.empresaId) l.empresaId = emp.id;
+    f.reset();
+    salvar();
+    renderEmpresas();
+  });
+  $('#form-add-analista').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const nome = e.target.nome.value.trim();
+    if (!nome || db.config.analistas.includes(nome)) return;
+    db.config.analistas.push(nome);
+    e.target.reset();
+    salvar();
+    renderEmpresas();
+  });
+  dlgE.addEventListener('change', (e) => {
+    const row = e.target.closest('[data-emp]');
+    if (row) {
+      const emp = db.config.empresas.find((x) => x.id === row.dataset.emp);
+      if (e.target.dataset.campo === 'cnpj') {
+        const c = soDigitos(e.target.value);
+        if (c.length !== 14) { toast('CNPJ precisa ter 14 dígitos.'); e.target.value = fmtCnpj(emp.cnpj); return; }
+        emp.cnpj = c;
+      } else emp.nome = e.target.value.trim();
+      salvar();
+      return;
+    }
+    if (e.target.dataset.analista !== undefined) {
+      const i = +e.target.dataset.analista;
+      const antigo = db.config.analistas[i];
+      const novo = e.target.value.trim();
+      if (!novo) return;
+      db.config.analistas[i] = novo;
+      for (const l of db.licitacoes) if (l.analista === antigo) l.analista = novo;
+      salvar();
+    }
+  });
+  dlgE.addEventListener('click', (e) => {
+    const re = e.target.closest('[data-rem-emp]');
+    if (re) {
+      const emp = db.config.empresas.find((x) => x.id === re.dataset.remEmp);
+      const n = db.licitacoes.filter((l) => l.empresaId === emp.id).length;
+      if (!confirm(`Remover ${nomeEmpresa(emp)}?${n ? `\n${n} contrato(s) ficarão sem empresa.` : ''}`)) return;
+      db.config.empresas = db.config.empresas.filter((x) => x !== emp);
+      for (const l of db.licitacoes) if (l.empresaId === emp.id) l.empresaId = '';
+      salvar(); renderEmpresas();
+    }
+    const ra = e.target.closest('[data-rem-ana]');
+    if (ra) { db.config.analistas.splice(+ra.dataset.remAna, 1); salvar(); renderEmpresas(); }
+  });
+
+  // ---------- Exportar para Excel ----------
+  const numBR = (v) => (Number(v) || 0).toFixed(2).replace('.', ',');
+  function linhasExport(tipo) {
+    if (tipo === 'contratos') {
+      const cab = ['Empresa', 'Tipo', 'Nº contrato/ata', 'Órgão', 'CNPJ do órgão', 'Licitação', 'Processo', 'Objeto', 'Analista', 'Status',
+        'Ação pendente', 'Assinado por nós', 'Assinado pelo órgão', 'Publicado', 'Vigência início', 'Vigência fim', 'Valor total', 'Empenhado', 'Saldo'];
+      return [cab, ...listaContratos().map(({ l, s }) => [nomeEmpresa(empresaDe(l)), INSTRUMENTO[l.instrumento] || '', l.numeroInstrumento, l.orgao,
+        fmtCnpj(l.orgaoCnpj), l.numero, l.processo, l.objeto, l.analista, s.rotulo, s.acoes.map((a) => a.texto).join('; '),
+        fmtData(l.etapas?.assinadoNos), fmtData(l.etapas?.assinadoOrgao), fmtData(l.etapas?.publicado),
+        fmtData(l.vigenciaInicio), fmtData(l.vigenciaFim), numBR(l.valor), numBR(totalPedidos(l)), numBR(saldo(l))])];
+    }
+    const cab = ['Empresa', 'Empenho/OF', 'Órgão', 'Contrato/ata', 'Licitação', 'Recebido', 'Entregar até', 'Entregue', 'NF', 'NF emitida', 'Pago', 'Valor', 'Status'];
+    return [cab, ...listaPedidos().map(({ l, p, s }) => [nomeEmpresa(empresaDe(l)), p.numero, p.orgao || l.orgao, docNumero(l), l.numero,
+      fmtData(p.dataRecebimento), fmtData(vencimentoEntrega(l, p)), fmtData(p.dataEntrega), p.nf, fmtData(p.dataNF), fmtData(p.dataPagamento), numBR(p.valor), s.rotulo])];
+  }
+  const limpaCel = (v) => String(v ?? '').replace(/^—$/, '').replace(/[\t\r\n]+/g, ' ');
+  document.addEventListener('click', async (e) => {
+    const btn = e.target.closest('[data-copiar], [data-baixar]');
+    if (!btn) return;
+    const tipo = btn.dataset.copiar || btn.dataset.baixar;
+    const linhas = linhasExport(tipo);
+    if (btn.dataset.copiar) {
+      const tsv = linhas.map((r) => r.map(limpaCel).join('\t')).join('\n');
+      try { await navigator.clipboard.writeText(tsv); toast(`${linhas.length - 1} linhas copiadas. Cole no Excel (Ctrl+V).`); }
+      catch (err) { toast('Não foi possível copiar. Use “Baixar planilha”.'); }
+    } else {
+      const csv = '﻿' + linhas.map((r) => r.map((v) => `"${limpaCel(v).replace(/"/g, '""')}"`).join(';')).join('\r\n');
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+      a.download = `${tipo}-${hojeISO()}.csv`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    }
   });
 
   // ---------- Navegação e eventos gerais ----------
+  function mostrarView(v) { ui.view = v; salvarUI(); renderTabs(); }
   $$('.tab').forEach((t) => t.addEventListener('click', () => mostrarView(t.dataset.view)));
-  function mostrarView(v) {
-    $$('.tab').forEach((t) => t.classList.toggle('active', t.dataset.view === v));
-    $$('.view').forEach((s) => s.classList.toggle('active', s.id === 'view-' + v));
-    try { localStorage.setItem(STORAGE_KEY + ':view', v); } catch (e) { /* ok */ }
-  }
-  try { const v = localStorage.getItem(STORAGE_KEY + ':view'); if (v && $('#view-' + v)) mostrarView(v); } catch (e) { /* ok */ }
 
   document.addEventListener('click', (e) => {
-    if (e.target.closest('[data-close]')) { e.target.closest('dialog')?.close(); return; }
+    const close = e.target.closest('[data-close]');
+    if (close) {
+      const d = close.closest('dialog');
+      if (d === dlgC) fecharContrato(); else if (d === dlgP) fecharPedido(); else d?.close();
+      return;
+    }
+    const chip = e.target.closest('[data-empresa]');
+    if (chip) { ui.empresa = chip.dataset.empresa; salvarUI(); render(); return; }
+    const pc = e.target.closest('[data-pill-c]');
+    if (pc) { ui.pillC = pc.dataset.pillC; salvarUI(); renderContratos(); return; }
+    const pp = e.target.closest('[data-pill-p]');
+    if (pp) { ui.pillP = pp.dataset.pillP; salvarUI(); renderPedidos(); return; }
+    const pz = e.target.closest('[data-pill-z]');
+    if (pz) { ui.pillZ = pz.dataset.pillZ; salvarUI(); renderPrazos(); return; }
     const ir = e.target.closest('[data-ir]');
-    if (ir) { mostrarView(ir.dataset.ir); return; }
+    if (ir) { if (ir.dataset.pill) ui.pillC = ir.dataset.pill; mostrarView(ir.dataset.ir); renderContratos(); return; }
     const row = e.target.closest('[data-lic]');
-    if (row && !e.target.closest('dialog')) abrirDetalhe(row.dataset.lic);
+    if (row && !e.target.closest('dialog') && !e.target.closest('a')) {
+      if (row.dataset.pedido) abrirPedido(row.dataset.lic, row.dataset.pedido);
+      else abrirContrato(row.dataset.lic);
+    }
   });
+  // Fecha o painel ao clicar fora dele
+  for (const d of [dlgC, dlgP]) d.addEventListener('mousedown', (e) => { if (e.target === d) (d === dlgC ? fecharContrato : fecharPedido)(); });
 
-  ['#f-busca', '#f-resultado', '#f-situacao'].forEach((s) => $(s).addEventListener('input', renderLicitacoes));
-  ['#f-prazo-tipo', '#f-prazo-concluidos'].forEach((s) => $(s).addEventListener('input', renderPrazos));
-  $('#btn-nova').addEventListener('click', () => abrirFormLicitacao());
+  $('#busca-contratos').addEventListener('input', renderContratos);
+  $('#busca-pedidos').addEventListener('input', renderPedidos);
+  $('#ordem-contratos').addEventListener('change', (e) => { ui.ordemC = e.target.value; salvarUI(); renderContratos(); });
+  $('#ordem-pedidos').addEventListener('change', (e) => { ui.ordemP = e.target.value; salvarUI(); renderPedidos(); });
+  $('#f-prazo-concluidos').addEventListener('change', renderPrazos);
+  $('#btn-novo').addEventListener('click', () => abrirContrato(null));
 
   // ---------- Backup ----------
   const fecharMenu = () => $('.menu').removeAttribute('open');
-
   $('#btn-exportar').addEventListener('click', () => {
     const blob = new Blob([JSON.stringify(db, null, 2)], { type: 'application/json' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = `licitacoes-backup-${toISO(hoje())}.json`;
+    a.download = `licitacoes-backup-${hojeISO()}.json`;
     a.click();
     URL.revokeObjectURL(a.href);
     fecharMenu();
+    toast('Backup exportado (os arquivos anexados não vão no backup).');
   });
-
   $('#inp-importar').addEventListener('change', async (e) => {
     const file = e.target.files[0];
     e.target.value = '';
@@ -536,15 +1124,12 @@
       if (db.licitacoes.length && !confirm('Substituir os dados atuais pelos do arquivo?')) return;
       db = normalizar(data);
       salvar();
-      toast(`${db.licitacoes.length} licitações importadas.`);
-    } catch (err) {
-      toast('Arquivo inválido.');
-    }
+      toast(`${db.licitacoes.length} contratos/licitações importados.`);
+    } catch (err) { toast('Arquivo inválido.'); }
   });
-
   $('#btn-limpar').addEventListener('click', () => {
     fecharMenu();
-    if (!confirm('Apagar TODAS as licitações deste navegador? Exporte um backup antes se quiser guardar.')) return;
+    if (!confirm('Apagar TODOS os contratos e empenhos? Exporte um backup antes se quiser guardar.')) return;
     db = normalizar({ licitacoes: [], config: db.config });
     salvar();
   });
@@ -553,47 +1138,57 @@
     fecharMenu();
     if (db.licitacoes.length && !confirm('Adicionar dados de exemplo aos seus dados atuais?')) return;
     const d = (n) => toISO(new Date(hoje().getTime() + n * 86400000));
+    const cfg = db.config;
+    if (!cfg.empresas.length) cfg.empresas.push({ id: uid(), nome: 'EMPRESA EXEMPLO A LTDA', cnpj: '00000000000191' }, { id: uid(), nome: 'EMPRESA EXEMPLO B LTDA', cnpj: '00000000000272' });
+    if (!cfg.analistas.length) cfg.analistas.push('Maria', 'João');
+    const [eA, eB] = [cfg.empresas[0].id, (cfg.empresas[1] || cfg.empresas[0]).id];
+    const ped = (o) => ({ id: uid(), anexos: [], descricao: '', orgao: '', dataEntrega: '', nf: '', dataNF: '', dataPagamento: '', obs: '', ...o });
     db.licitacoes.push(
       {
-        id: uid(), orgao: 'Prefeitura Municipal de Exemplo', numero: 'PE 045/2026', modalidade: 'Pregão eletrônico',
-        objeto: 'Material de expediente', dataSessao: d(-120), resultado: 'ganha', valor: 84500, link: '',
-        instrumento: 'ata', numeroInstrumento: 'ARP 112/2026', vigenciaInicio: d(-100), vigenciaFim: d(265),
-        prazoEntregaDias: '15', prazoPagamentoDias: '30', contato: 'Fiscal: Ana — (11) 0000-0000', obs: '',
+        id: uid(), empresaId: eA, analista: 'Maria', orgao: 'PREFEITURA MUNICIPAL DE EXEMPLO', orgaoCnpj: '', uasg: '', numero: 'PE 045/2026', processo: '1234/2026',
+        modalidade: 'Pregão eletrônico', objeto: 'Material de expediente', dataSessao: d(-120), resultado: 'ganha', valor: 84500, link: '',
+        instrumento: 'ata', numeroInstrumento: 'ARP 112/2026', vigenciaInicio: d(-100), vigenciaFim: d(265), situacao: '',
+        etapas: { recebido: d(-108), assinadoNos: d(-106), assinadoOrgao: d(-101), publicado: d(-100) },
+        prazoEntregaDias: '15', prazoPagamentoDias: '30', contato: 'Fiscal: Ana', obs: '', anexos: [], itens: [],
         pedidos: [
-          { id: uid(), numero: '2026NE000321', valor: 12300, dataRecebimento: d(-60), prazoDias: '15', descricao: 'Papel A4 e canetas', dataEntrega: d(-50), nf: '1520', dataPagamento: d(-22), obs: '' },
-          { id: uid(), numero: '2026NE000488', valor: 9800, dataRecebimento: d(-30), prazoDias: '15', descricao: 'Toners', dataEntrega: d(-18), nf: '1588', dataPagamento: '', obs: '' },
-          { id: uid(), numero: '2026NE000612', valor: 15400, dataRecebimento: d(-10), prazoDias: '15', descricao: 'Pastas e arquivos', dataEntrega: '', nf: '', dataPagamento: '', obs: '' },
+          ped({ numero: '2026NE000321', valor: 12300, dataRecebimento: d(-60), prazoDias: '15', descricao: 'Papel A4 e canetas', dataEntrega: d(-50), nf: '1520', dataNF: d(-50), dataPagamento: d(-22) }),
+          ped({ numero: '2026NE000488', valor: 9800, dataRecebimento: d(-30), prazoDias: '15', descricao: 'Toners', dataEntrega: d(-18), nf: '1588', dataNF: d(-18) }),
+          ped({ numero: '2026NE000590', valor: 4100, dataRecebimento: d(-12), prazoDias: '15', descricao: 'Grampeadores', dataEntrega: d(-2) }),
+          ped({ numero: '2026NE000612', valor: 15400, dataRecebimento: d(-10), prazoDias: '15', descricao: 'Pastas e arquivos' }),
         ],
       },
       {
-        id: uid(), orgao: 'Secretaria Estadual de Saúde', numero: 'PE 210/2026', modalidade: 'Pregão eletrônico',
-        objeto: 'Luvas de procedimento', dataSessao: d(-200), resultado: 'ganha', valor: 230000, link: '',
-        instrumento: 'contrato', numeroInstrumento: 'CT 77/2026', vigenciaInicio: d(-180), vigenciaFim: d(40),
-        prazoEntregaDias: '10', prazoPagamentoDias: '30', contato: '', obs: 'Verificar interesse em aditivo de prazo.',
-        pedidos: [
-          { id: uid(), numero: 'OF 09/2026', valor: 46000, dataRecebimento: d(-14), prazoDias: '10', descricao: '2.000 caixas', dataEntrega: '', nf: '', dataPagamento: '', obs: '' },
-        ],
+        id: uid(), empresaId: eB, analista: 'João', orgao: 'SECRETARIA ESTADUAL DE SAÚDE', orgaoCnpj: '', uasg: '', numero: 'PE 210/2026', processo: '',
+        modalidade: 'Pregão eletrônico', objeto: 'Luvas de procedimento', dataSessao: d(-200), resultado: 'ganha', valor: 230000, link: '',
+        instrumento: 'contrato', numeroInstrumento: 'CT 77/2026', vigenciaInicio: d(-180), vigenciaFim: d(40), situacao: '',
+        etapas: { recebido: d(-185), assinadoNos: d(-184), assinadoOrgao: d(-181), publicado: d(-180) },
+        prazoEntregaDias: '10', prazoPagamentoDias: '30', contato: '', obs: 'Verificar interesse em aditivo de prazo.', anexos: [], itens: [],
+        pedidos: [ped({ numero: 'OF 09/2026', valor: 46000, dataRecebimento: d(-14), prazoDias: '10', descricao: '2.000 caixas' })],
       },
       {
-        id: uid(), orgao: 'Universidade Federal Exemplo', numero: 'PE 18/2026', modalidade: 'Pregão eletrônico',
-        objeto: 'Mobiliário de escritório', dataSessao: d(-25), resultado: 'aguardando', valor: 0, pedidos: [],
+        id: uid(), empresaId: eA, analista: '', orgao: 'MUNICÍPIO DE POUSO ALTO', orgaoCnpj: '', uasg: '', numero: 'PE 22/2026', processo: '',
+        modalidade: 'Pregão eletrônico', objeto: 'Comboio de abastecimento', dataSessao: d(-20), resultado: 'ganha', valor: 179000, link: '',
+        instrumento: 'contrato', numeroInstrumento: 'CT 58/2026', vigenciaInicio: '', vigenciaFim: '', situacao: '',
+        etapas: { recebido: d(-3) }, prazoEntregaDias: '60', prazoPagamentoDias: '30', contato: '', obs: '', anexos: [], itens: [], pedidos: [],
       },
       {
-        id: uid(), orgao: 'Câmara Municipal', numero: 'DL 03/2026', modalidade: 'Dispensa',
-        objeto: 'Café e açúcar', dataSessao: d(-70), resultado: 'perdida', valor: 0, pedidos: [],
+        id: uid(), empresaId: eB, analista: 'Maria', orgao: 'UNIVERSIDADE FEDERAL EXEMPLO', numero: 'PE 18/2026', modalidade: 'Pregão eletrônico',
+        objeto: 'Mobiliário de escritório', dataSessao: d(-25), resultado: 'aguardando', valor: 0, pedidos: [], anexos: [], etapas: {}, situacao: '',
       },
     );
+    db = normalizar(db);
     salvar();
     toast('Dados de exemplo carregados.');
   });
 
-  const fmtCnpj = (c) => String(c).replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5');
-
-  // API usada pelo módulo do PNCP (pncp.js)
+  // ---------- API para os outros módulos ----------
   window.App = {
-    db: () => db, salvar, uid, esc, toast, abrirDetalhe,
-    fmtMoeda, fmtData, fmtCnpj, parseData, toISO, hoje,
+    db: () => db, salvar, uid, esc, toast,
+    abrirContrato, abrirDetalhe: abrirContrato, abrirPedido,
+    fmtMoeda, fmtData, fmtCnpj, parseData, toISO, hoje, soDigitos,
     onRender: (fn) => renderHooks.push(fn),
+    onSalvar: (fn) => saveHooks.push(fn),
+    usarDados, STORAGE_KEY,
   };
 
   render();

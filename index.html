@@ -3,47 +3,110 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Licitações OSY</title>
+  <title>Contratos e Empenhos OSY</title>
   <meta name="theme-color" content="#0A3855">
   <link rel="icon" href="assets/logo-osy.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
+  <script src="config.js"></script>
 </head>
 <body>
-  <header class="topbar">
-    <a class="brand" href="./" aria-label="Grupo OSY — Licitações">
-      <img src="assets/logo-osy-branca.png" alt="Grupo OSY" width="156" height="27">
-      <span class="brand-sub">Licitações</span>
-    </a>
-    <nav class="tabs" role="tablist">
-      <button class="tab active" data-view="painel">Painel</button>
-      <button class="tab" data-view="licitacoes">Licitações</button>
-      <button class="tab" data-view="prazos">Prazos</button>
-      <button class="tab" data-view="pncp">PNCP</button>
-    </nav>
-    <div class="top-actions">
-      <button id="btn-nova" class="btn primary">+ Nova licitação</button>
-      <details class="menu">
-        <summary class="btn">Backup ▾</summary>
-        <div class="menu-list">
-          <button id="btn-exportar">Exportar dados (JSON)</button>
-          <label class="menu-file">Importar dados (JSON)<input type="file" id="inp-importar" accept=".json,application/json" hidden></label>
-          <button id="btn-exemplo">Carregar dados de exemplo</button>
-          <button id="btn-limpar" class="danger-text">Apagar tudo</button>
-        </div>
-      </details>
+  <!-- Tela de login (só aparece quando o login está configurado em config.js) -->
+  <div id="auth" class="auth">
+    <div class="auth-card">
+      <img src="assets/logo-osy.png" alt="Grupo OSY" class="auth-logo" width="200" height="35">
+      <div class="auth-sub">Contratos e Empenhos</div>
+
+      <p id="auth-carregando" class="muted">Carregando…</p>
+
+      <form id="form-login" hidden>
+        <h1>Entrar</h1>
+        <label>E-mail<input type="email" name="email" autocomplete="username" required></label>
+        <label>Senha<input type="password" name="senha" autocomplete="current-password" required></label>
+        <button type="submit" class="btn primary block">Entrar</button>
+        <a href="#" id="link-esqueci" class="auth-link">Esqueci minha senha</a>
+        <p class="muted auth-nota">O acesso é só por convite. Peça à administradora para te cadastrar.</p>
+      </form>
+
+      <form id="form-esqueci" hidden>
+        <h1>Esqueci minha senha</h1>
+        <p class="muted">Informe seu e-mail. Enviaremos um link para você criar uma nova senha.</p>
+        <label>E-mail<input type="email" name="email" autocomplete="username" required></label>
+        <button type="submit" class="btn primary block">Enviar link</button>
+        <a href="#" id="link-voltar" class="auth-link">← Voltar para o login</a>
+      </form>
+
+      <form id="form-senha" hidden>
+        <h1>Criar senha</h1>
+        <p class="muted">Conta: <strong id="senha-email"></strong></p>
+        <label>Nova senha<input type="password" name="senha" autocomplete="new-password" minlength="8" required></label>
+        <label>Confirme a senha<input type="password" name="confirmar" autocomplete="new-password" minlength="8" required></label>
+        <button type="submit" class="btn primary block">Salvar senha</button>
+        <a href="#" id="link-cancelar-senha" class="auth-link">Cancelar</a>
+      </form>
+
+      <p id="auth-msg" class="auth-msg" role="alert" hidden></p>
     </div>
+    <p class="auth-slogan">Transformação que se vê no caminho.</p>
+  </div>
+
+  <header class="topbar">
+    <a class="brand" href="./" aria-label="Grupo OSY — início">
+      <img src="assets/logo-osy-branca.png" alt="Grupo OSY" width="156" height="27">
+    </a>
+    <span class="slogan">Transformação que se vê no caminho.</span>
+    <details class="menu">
+      <summary class="btn btn-user"><span class="avatar" id="avatar">☰</span><span id="menu-rotulo">Menu</span> ▾</summary>
+      <div class="menu-list">
+        <div class="so-login menu-conta">
+          <div class="muted">Conectado como</div>
+          <strong id="usuario-email"></strong>
+          <div id="sync" class="sync"></div>
+        </div>
+        <button id="btn-trocar-senha" class="so-login">Trocar senha</button>
+        <button id="btn-sair" class="so-login">Sair</button>
+        <hr class="so-login">
+        <button id="btn-empresas-menu">Empresas e analistas</button>
+        <hr>
+        <div class="menu-titulo">Backup</div>
+        <button id="btn-exportar">Exportar dados (JSON)</button>
+        <label class="menu-file">Importar dados (JSON)<input type="file" id="inp-importar" accept=".json,application/json" hidden></label>
+        <button id="btn-exemplo">Carregar dados de exemplo</button>
+        <button id="btn-limpar" class="danger-text">Apagar tudo</button>
+      </div>
+    </details>
   </header>
 
   <main>
+    <div class="page-head">
+      <div>
+        <h1 class="page-title">Gestão de Contratos e Empenhos</h1>
+        <p class="page-sub">Contratos e atas assinados com os órgãos, e cada empenho do recebimento à cobrança.</p>
+      </div>
+      <div class="page-actions">
+        <button class="btn" id="btn-empresas">Empresas e analistas</button>
+        <button class="btn primary" id="btn-novo">＋ Novo contrato / ata</button>
+      </div>
+    </div>
+
+    <nav class="tabs" role="tablist">
+      <button class="tab" data-view="painel"><span class="tab-t">Painel</span><span class="tab-s" id="tab-s-painel">visão geral</span></button>
+      <button class="tab" data-view="contratos"><span class="tab-t">Contratos e atas</span><span class="tab-s" id="tab-s-contratos"></span></button>
+      <button class="tab" data-view="pedidos"><span class="tab-t">Pedidos e empenhos</span><span class="tab-s" id="tab-s-pedidos"></span></button>
+      <button class="tab" data-view="prazos"><span class="tab-t">Prazos</span><span class="tab-s" id="tab-s-prazos"></span></button>
+      <button class="tab" data-view="pncp"><span class="tab-t">PNCP</span><span class="tab-s">importar</span></button>
+    </nav>
+
+    <div class="empresas-chips" id="chips-empresas"></div>
+
     <!-- PAINEL -->
-    <section id="view-painel" class="view active">
-      <div class="kpis" id="kpis"></div>
+    <section id="view-painel" class="view">
+      <div class="kpis" id="kpis-painel"></div>
       <div class="grid-2">
         <div class="card">
-          <h2>⚠️ Atenção agora</h2>
+          <h2>⚠️ Ação nossa pendente</h2>
           <ul class="alert-list" id="alertas"></ul>
         </div>
         <div class="card">
@@ -53,65 +116,76 @@
       </div>
     </section>
 
-    <!-- LICITAÇÕES -->
-    <section id="view-licitacoes" class="view">
-      <div class="filters">
-        <input type="search" id="f-busca" placeholder="Buscar por órgão, número ou objeto…">
-        <select id="f-resultado">
-          <option value="">Todos os resultados</option>
-          <option value="ganha">Ganhas</option>
-          <option value="aguardando">Aguardando resultado</option>
-          <option value="perdida">Perdidas</option>
-        </select>
-        <select id="f-situacao">
-          <option value="">Todas as situações</option>
-          <option value="vigente">Contrato/ata vigente</option>
-          <option value="vencendo">Vigência acabando (≤ 60 dias)</option>
-          <option value="encerrada">Vigência encerrada</option>
-        </select>
+    <!-- CONTRATOS -->
+    <section id="view-contratos" class="view">
+      <div class="kpis" id="kpis-contratos"></div>
+      <div class="toolbar">
+        <div class="pills" id="pills-contratos"></div>
+        <div class="toolbar-right">
+          <input type="search" id="busca-contratos" placeholder="Buscar nº, órgão, licitação, objeto, item…">
+          <select id="ordem-contratos" aria-label="Ordenar">
+            <option value="urgente">Mais urgentes</option>
+            <option value="vigencia">Vigência terminando antes</option>
+            <option value="recente">Mais recentes</option>
+            <option value="saldo">Maior saldo</option>
+            <option value="orgao">Órgão (A–Z)</option>
+          </select>
+        </div>
+      </div>
+      <div class="export-links">
+        <button class="link" data-copiar="contratos">Copiar lista para o Excel</button>
+        <button class="link" data-baixar="contratos">Baixar planilha (.csv)</button>
       </div>
       <div class="table-wrap">
-        <table class="table" id="tabela-licitacoes">
-          <thead>
-            <tr>
-              <th>Órgão / Número</th>
-              <th>Objeto</th>
-              <th>Resultado</th>
-              <th class="num">Valor ganho</th>
-              <th class="num">Saldo</th>
-              <th>Vigência</th>
-              <th>Pendências</th>
-            </tr>
-          </thead>
+        <table class="table" id="tabela-contratos">
+          <thead><tr>
+            <th>Documento</th><th>Órgão e objeto</th><th>Analista</th><th>Vigência</th><th>Saldo</th><th>Status</th>
+          </tr></thead>
           <tbody></tbody>
         </table>
       </div>
-      <p class="empty" id="vazio-licitacoes" hidden></p>
+      <p class="empty" id="vazio-contratos" hidden></p>
+    </section>
+
+    <!-- PEDIDOS -->
+    <section id="view-pedidos" class="view">
+      <div class="kpis" id="kpis-pedidos"></div>
+      <div class="toolbar">
+        <div class="pills" id="pills-pedidos"></div>
+        <div class="toolbar-right">
+          <input type="search" id="busca-pedidos" placeholder="Buscar nº do empenho, órgão, NF, contrato…">
+          <select id="ordem-pedidos" aria-label="Ordenar">
+            <option value="urgente">Mais urgentes</option>
+            <option value="recente">Recebidos recentemente</option>
+            <option value="valor">Maior valor</option>
+            <option value="orgao">Órgão (A–Z)</option>
+          </select>
+        </div>
+      </div>
+      <div class="export-links">
+        <button class="link" data-copiar="pedidos">Copiar lista para o Excel</button>
+        <button class="link" data-baixar="pedidos">Baixar planilha (.csv)</button>
+      </div>
+      <div class="table-wrap">
+        <table class="table" id="tabela-pedidos">
+          <thead><tr>
+            <th>Empenho / OF</th><th>Órgão</th><th>Contrato / ata</th><th>Recebido</th><th>Entregar até</th><th class="num">Valor</th><th>Status</th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <p class="empty" id="vazio-pedidos" hidden></p>
     </section>
 
     <!-- PRAZOS -->
     <section id="view-prazos" class="view">
-      <div class="filters">
-        <select id="f-prazo-tipo">
-          <option value="">Todos os prazos</option>
-          <option value="entrega">Entregas</option>
-          <option value="pagamento">Pagamentos a receber</option>
-          <option value="vigencia">Vigências</option>
-        </select>
+      <div class="toolbar">
+        <div class="pills" id="pills-prazos"></div>
         <label class="check"><input type="checkbox" id="f-prazo-concluidos"> Mostrar concluídos</label>
       </div>
       <div class="table-wrap">
         <table class="table" id="tabela-prazos">
-          <thead>
-            <tr>
-              <th>Quando</th>
-              <th>Tipo</th>
-              <th>Descrição</th>
-              <th>Órgão</th>
-              <th class="num">Valor</th>
-              <th>Situação</th>
-            </tr>
-          </thead>
+          <thead><tr><th>Quando</th><th>Tipo</th><th>Descrição</th><th>Órgão</th><th class="num">Valor</th><th>Situação</th></tr></thead>
           <tbody></tbody>
         </table>
       </div>
@@ -122,12 +196,10 @@
     <section id="view-pncp" class="view">
       <div class="grid-2 pncp-top">
         <div class="card">
-          <h2>Buscar minhas licitações no PNCP</h2>
-          <p class="muted">Encontra os contratos, empenhos e autorizações de fornecimento publicados no PNCP em nome da sua empresa e agrupa por licitação.</p>
+          <h2>Buscar no PNCP</h2>
+          <p class="muted">Encontra os contratos, empenhos e autorizações de fornecimento publicados no PNCP em nome das empresas cadastradas e agrupa por licitação.</p>
+          <div class="pncp-empresas" id="pncp-empresas"></div>
           <div class="form-grid">
-            <label class="span-2">CNPJ(s) da empresa — um por linha
-              <textarea id="pncp-cnpjs" rows="3" placeholder="00.000.000/0001-00"></textarea>
-            </label>
             <label>Buscar a partir de<input type="date" id="pncp-desde"></label>
             <label>Empenhos recebidos antes de<input type="date" id="pncp-concluidos"></label>
             <p class="muted span-2 hint">…entram como já <strong>entregues e pagos</strong>, para o histórico não aparecer como atrasado. Deixe em branco para controlar tudo.</p>
@@ -167,107 +239,171 @@
     </section>
   </main>
 
-  <!-- Modal: licitação -->
-  <dialog id="dlg-licitacao">
-    <form id="form-licitacao" method="dialog">
-      <h2 id="dlg-licitacao-titulo">Nova licitação</h2>
-      <fieldset>
-        <legend>Licitação</legend>
-        <div class="form-grid">
-          <label class="span-2">Órgão *<input name="orgao" required></label>
-          <label>Nº do processo / pregão *<input name="numero" required placeholder="Ex.: PE 12/2026"></label>
-          <label>Modalidade
-            <select name="modalidade">
-              <option>Pregão eletrônico</option>
-              <option>Pregão presencial</option>
-              <option>Concorrência</option>
-              <option>Dispensa</option>
-              <option>Inexigibilidade</option>
-              <option>Outra</option>
-            </select>
-          </label>
-          <label class="span-2">Objeto<input name="objeto" placeholder="O que você vai fornecer"></label>
-          <label>Data da sessão<input type="date" name="dataSessao"></label>
-          <label>Resultado
-            <select name="resultado">
-              <option value="aguardando">Aguardando resultado</option>
-              <option value="ganha">Ganha</option>
-              <option value="perdida">Perdida</option>
-            </select>
-          </label>
-          <label>Valor ganho (R$)<input name="valor" inputmode="decimal" placeholder="0,00"></label>
-          <label>Link (PNCP / portal)<input type="url" name="link" placeholder="https://"></label>
-        </div>
-      </fieldset>
-      <fieldset class="so-ganha">
-        <legend>Contrato / Ata</legend>
-        <div class="form-grid">
-          <label>Instrumento
-            <select name="instrumento">
-              <option value="ata">Ata de registro de preços</option>
-              <option value="contrato">Contrato</option>
-              <option value="empenho">Só empenho / OF</option>
-            </select>
-          </label>
-          <label>Nº do contrato / ata<input name="numeroInstrumento"></label>
-          <label>Início da vigência<input type="date" name="vigenciaInicio"></label>
-          <label>Fim da vigência<input type="date" name="vigenciaFim"></label>
-          <label>Prazo de entrega padrão (dias)<input type="number" min="0" name="prazoEntregaDias" placeholder="Ex.: 30"></label>
-          <label>Prazo de pagamento (dias após entrega)<input type="number" min="0" name="prazoPagamentoDias" placeholder="Ex.: 30"></label>
-          <label class="span-2">Contato no órgão<input name="contato" placeholder="Nome, telefone, e-mail do fiscal/gestor"></label>
-        </div>
-      </fieldset>
-      <label>Observações<textarea name="obs" rows="2"></textarea></label>
-      <div class="dlg-actions">
-        <button type="button" class="btn danger" id="btn-excluir-licitacao" hidden>Excluir</button>
-        <span class="spacer"></span>
-        <button type="button" class="btn" data-close>Cancelar</button>
-        <button type="submit" class="btn primary">Salvar</button>
-      </div>
-    </form>
-  </dialog>
-
-  <!-- Modal: detalhe -->
-  <dialog id="dlg-detalhe" class="wide">
-    <div id="detalhe-conteudo"></div>
-  </dialog>
-
-  <!-- Modal: pedido / empenho -->
-  <dialog id="dlg-pedido">
-    <form id="form-pedido" method="dialog">
-      <h2 id="dlg-pedido-titulo">Novo pedido / empenho</h2>
-      <div class="form-grid">
-        <label>Nº do empenho / OF *<input name="numero" required></label>
-        <label>Valor (R$)<input name="valor" inputmode="decimal" placeholder="0,00"></label>
-        <label>Recebido em *<input type="date" name="dataRecebimento" required></label>
-        <label>Prazo de entrega (dias corridos)<input type="number" min="0" name="prazoDias"></label>
-        <label class="span-2">Itens / descrição<input name="descricao"></label>
-      </div>
-      <fieldset>
-        <legend>Andamento</legend>
-        <div class="form-grid">
-          <label>Entregue em<input type="date" name="dataEntrega"></label>
-          <label>Nº da nota fiscal<input name="nf"></label>
-          <label>Pago em<input type="date" name="dataPagamento"></label>
-        </div>
-      </fieldset>
-      <label>Observações<textarea name="obs" rows="2"></textarea></label>
-      <div class="dlg-actions">
-        <button type="button" class="btn danger" id="btn-excluir-pedido" hidden>Excluir</button>
-        <span class="spacer"></span>
-        <button type="button" class="btn" data-close>Cancelar</button>
-        <button type="submit" class="btn primary">Salvar</button>
-      </div>
-    </form>
-  </dialog>
-
   <footer class="foot">
     <span>Transformação que se vê no caminho.</span>
-    <span class="muted-foot">Dados salvos neste navegador · faça backup regularmente</span>
+    <span class="muted-foot so-local">Dados salvos neste navegador · faça backup regularmente</span>
+    <span class="muted-foot so-conta">Seus dados ficam salvos na sua conta</span>
   </footer>
 
+  <!-- Painel lateral: contrato / ata -->
+  <dialog id="dlg-contrato" class="drawer">
+    <form id="form-contrato" novalidate>
+      <div class="drawer-head" id="contrato-head"></div>
+      <div class="drawer-body">
+        <section class="sec">
+          <div class="sec-head"><h3><span class="sec-n">1</span> Dados do contrato / ata</h3><span class="muted">Órgão, licitação e analista responsável</span></div>
+          <div class="form-grid">
+            <label class="span-2">Empresa *<select name="empresaId" data-empresas></select></label>
+            <label>Resultado da licitação
+              <select name="resultado">
+                <option value="ganha">Ganha</option>
+                <option value="aguardando">Aguardando resultado</option>
+                <option value="perdida">Perdida</option>
+              </select>
+            </label>
+            <label>Tipo
+              <select name="instrumento">
+                <option value="ata">Ata de registro de preços</option>
+                <option value="contrato">Contrato</option>
+                <option value="empenho">Só empenho / OF</option>
+              </select>
+            </label>
+            <label>Nº do contrato / ata<input name="numeroInstrumento" placeholder="Ex.: ARP 012/2026"></label>
+            <label>Situação especial
+              <select name="situacao">
+                <option value="">— Normal —</option>
+                <option value="suspenso">Suspenso</option>
+                <option value="rescindido">Rescindido / cancelado</option>
+              </select>
+            </label>
+            <label class="span-2">Órgão *<input name="orgao" required></label>
+            <label>CNPJ do órgão<input name="orgaoCnpj" inputmode="numeric"></label>
+            <label>UASG / código do órgão<input name="uasg"></label>
+            <label>Modalidade
+              <select name="modalidade">
+                <option>Pregão eletrônico</option><option>Pregão presencial</option><option>Concorrência</option>
+                <option>Dispensa</option><option>Inexigibilidade</option><option>Outra</option>
+              </select>
+            </label>
+            <label>Nº da licitação *<input name="numero" required placeholder="Ex.: PE 45/2026"></label>
+            <label>Nº do processo<input name="processo"></label>
+            <label>Analista que venceu / gestor interno<select name="analista" data-analistas></select></label>
+            <label>Data da sessão<input type="date" name="dataSessao"></label>
+            <label>Link (PNCP / portal)<input type="url" name="link" placeholder="https://"></label>
+            <label class="span-2">Objeto<textarea name="objeto" rows="2"></textarea></label>
+          </div>
+        </section>
+
+        <section class="sec so-ganha">
+          <div class="sec-head"><h3><span class="sec-n">2</span> Assinatura e vigência</h3><span class="muted">Do recebimento à publicação</span></div>
+          <div class="form-grid cols-4">
+            <label>Recebido para assinar<input type="date" name="etapas.recebido"></label>
+            <label>Assinado por nós<input type="date" name="etapas.assinadoNos"></label>
+            <label>Assinado pelo órgão<input type="date" name="etapas.assinadoOrgao"></label>
+            <label>Publicado<input type="date" name="etapas.publicado"></label>
+            <label>Início da vigência<input type="date" name="vigenciaInicio"></label>
+            <label>Fim da vigência<input type="date" name="vigenciaFim"></label>
+            <label>Valor total (R$)<input name="valor" inputmode="decimal" placeholder="0,00"></label>
+            <label>Contato no órgão<input name="contato" placeholder="Fiscal / gestor"></label>
+            <label>Prazo de entrega (dias)<input type="number" min="0" name="prazoEntregaDias" placeholder="Ex.: 15"></label>
+            <label>Prazo de pagamento (dias)<input type="number" min="0" name="prazoPagamentoDias" placeholder="Ex.: 30"></label>
+          </div>
+        </section>
+
+        <section class="sec so-ganha so-existente" id="sec-itens"></section>
+        <section class="sec so-ganha so-existente" id="sec-pedidos"></section>
+
+        <section class="sec">
+          <div class="sec-head"><h3><span class="sec-n" data-n="docs">5</span> Documentos</h3><span class="muted">Ata, contrato, publicação, aditivos…</span></div>
+          <div class="anexos" data-anexos="contrato"></div>
+        </section>
+
+        <section class="sec">
+          <div class="sec-head"><h3><span class="sec-n" data-n="obs">6</span> Observações</h3></div>
+          <textarea name="obs" rows="3" placeholder="Anotações internas"></textarea>
+        </section>
+      </div>
+      <div class="drawer-foot">
+        <button type="button" class="btn danger" id="btn-excluir-contrato">Excluir</button>
+        <span class="spacer"></span>
+        <button type="button" class="btn" data-close>Fechar</button>
+        <button type="submit" class="btn primary" id="btn-salvar-contrato">Salvar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Painel lateral: pedido / empenho -->
+  <dialog id="dlg-pedido" class="drawer">
+    <form id="form-pedido" novalidate>
+      <div class="drawer-head" id="pedido-head"></div>
+      <div class="drawer-body">
+        <section class="sec">
+          <div class="sec-head"><h3><span class="sec-n">1</span> Recebimento do empenho</h3><span class="muted">Nota de empenho / ordem de fornecimento</span></div>
+          <div class="form-grid">
+            <label>Nº do empenho / OF *<input name="numero" required></label>
+            <label>Valor (R$)<input name="valor" inputmode="decimal" placeholder="0,00"></label>
+            <label>Recebido em *<input type="date" name="dataRecebimento" required></label>
+            <label>Prazo de entrega (dias corridos)<input type="number" min="0" name="prazoDias"></label>
+            <label class="span-2">Órgão que pediu <span class="muted">(se for diferente do contrato)</span><input name="orgao"></label>
+            <label class="span-2">Itens / descrição<input name="descricao"></label>
+          </div>
+        </section>
+        <section class="sec">
+          <div class="sec-head"><h3><span class="sec-n">2</span> Entrega e cobrança</h3><span class="muted">Do envio ao pagamento</span></div>
+          <div class="form-grid">
+            <label>Entregue em<input type="date" name="dataEntrega"></label>
+            <label>Nº da nota fiscal<input name="nf"></label>
+            <label>NF emitida em<input type="date" name="dataNF"></label>
+            <label>Pago em<input type="date" name="dataPagamento"></label>
+          </div>
+        </section>
+        <section class="sec">
+          <div class="sec-head"><h3><span class="sec-n">3</span> Documentos</h3><span class="muted">Nota de empenho, NF, canhoto de entrega…</span></div>
+          <div class="anexos" data-anexos="pedido"></div>
+        </section>
+        <section class="sec">
+          <div class="sec-head"><h3><span class="sec-n">4</span> Observações</h3></div>
+          <textarea name="obs" rows="2"></textarea>
+        </section>
+      </div>
+      <div class="drawer-foot">
+        <button type="button" class="btn danger" id="btn-excluir-pedido">Excluir</button>
+        <span class="spacer"></span>
+        <button type="button" class="btn" data-close>Fechar</button>
+        <button type="submit" class="btn primary" id="btn-salvar-pedido">Salvar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Empresas e analistas -->
+  <dialog id="dlg-empresas">
+    <div class="dlg-pad">
+      <h2>Empresas e analistas</h2>
+      <h3 class="mini">Empresas do grupo</h3>
+      <p class="muted">O CNPJ é usado para buscar no PNCP os contratos e empenhos de cada empresa.</p>
+      <div id="lista-empresas" class="lista-edit"></div>
+      <form id="form-add-empresa" class="add-row">
+        <input name="nome" placeholder="Nome da empresa" required>
+        <input name="cnpj" placeholder="CNPJ" inputmode="numeric" required>
+        <button class="btn">Adicionar</button>
+      </form>
+      <h3 class="mini">Analistas</h3>
+      <p class="muted">Quem venceu a licitação ou cuida do contrato.</p>
+      <div id="lista-analistas" class="lista-edit"></div>
+      <form id="form-add-analista" class="add-row">
+        <input name="nome" placeholder="Nome do analista" required>
+        <button class="btn">Adicionar</button>
+      </form>
+      <div class="dlg-actions"><span class="spacer"></span><button class="btn primary" data-close>Pronto</button></div>
+    </div>
+  </dialog>
+
   <div id="toast" role="status" aria-live="polite"></div>
+
+  <script src="assets/vendor/supabase-2.118.0.js"></script>
   <script src="app.js"></script>
+  <script src="auth.js"></script>
+  <script src="arquivos.js"></script>
   <script src="pncp.js"></script>
 </body>
 </html>
