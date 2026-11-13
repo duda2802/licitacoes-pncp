@@ -1,6 +1,7 @@
 // Função "usuarios" (Supabase Edge Function): gerenciamento de usuários pela administradora.
 // Roda no servidor do Supabase, onde fica a chave secreta — por isso o site não precisa dela.
-// Só aceita chamadas de quem está logado E tem perfil "admin".
+// Só aceita chamadas de quem está logado E tem perfil "admin" (a própria função confere o login,
+// por isso a opção "Verify JWT" pode ficar desligada no painel do Supabase).
 //
 // Ações (POST JSON):
 //   { acao: 'criar',   nome, email, senha, papel }
@@ -27,13 +28,27 @@ function traduzir(msg = '') {
   return msg || 'Erro inesperado.';
 }
 
+// Chave secreta disponível automaticamente nas Edge Functions (sistema novo ou antigo de chaves).
+function chaveSecreta(): string | undefined {
+  const lista = Deno.env.get('SUPABASE_SECRET_KEYS');
+  if (lista) {
+    try {
+      const obj = JSON.parse(lista);
+      const v = obj.default ?? Object.values(obj)[0];
+      if (typeof v === 'string' && v) return v;
+    } catch { /* segue */ }
+  }
+  return Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? Deno.env.get('SUPABASE_SECRET_KEY') ?? undefined;
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
   if (req.method !== 'POST') return resposta({ erro: 'Método não permitido.' }, 405);
 
   try {
     const url = Deno.env.get('SUPABASE_URL')!;
-    const chave = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? Deno.env.get('SUPABASE_SECRET_KEY')!;
+    const chave = chaveSecreta();
+    if (!chave) return resposta({ erro: 'Chave secreta do Supabase não encontrada na função.' }, 500);
     const admin = createClient(url, chave, { auth: { persistSession: false, autoRefreshToken: false } });
 
     // Quem está chamando?
