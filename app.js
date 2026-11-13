@@ -17,6 +17,12 @@
   const saveHooks = [];
   const renderHooks = [];
   const ui = carregarUI();
+  let somenteLeitura = false; // perfil "Só visualização" (definido pelo auth.js)
+  function travarCampos(form) {
+    for (const el of form.elements) {
+      if (el.matches('input, select, textarea') && !el.closest('.anexos')) el.disabled = somenteLeitura;
+    }
+  }
 
   function carregar() {
     try {
@@ -576,6 +582,7 @@
       empresaId: ui.empresa || db.config.empresas[0]?.id || '', etapas: { recebido: hojeISO() },
     };
     escreverForm(formC, base);
+    travarCampos(formC);
     sujoC = false;
     atualizarVisibilidadeC();
     renderContratoHead();
@@ -634,11 +641,11 @@
       </div>
       ${ganha ? `<ol class="passos">${passos.map(([k, rot, v]) => `
         <li class="${v ? 'feito' : ''} ${proximo && proximo[0] === k ? 'proximo' : ''}">
-          ${!v && k !== 'vigencia' ? `<button type="button" class="passo-btn" data-passo="${k}" title="Marcar como feito hoje">${rot}</button>` : `<span class="passo-rot">${rot}</span>`}
+          ${!v && k !== 'vigencia' && !somenteLeitura ? `<button type="button" class="passo-btn" data-passo="${k}" title="Marcar como feito hoje">${rot}</button>` : `<span class="passo-rot">${rot}</span>`}
           <span class="mono passo-data">${v ? fmtData(v) : '—'}</span>
         </li>`).join('')}</ol>` : ''}
       ${st.acoes.length ? `<div class="dh-acoes">${st.acoes.map((a) => `<span class="acao ${a.nivel}">⚠ ${esc(a.texto)}</span>`).join('')}</div>` : ''}
-      ${ganha && proximo ? `<button type="button" class="btn small" data-passo="${proximo[0]}">✓ Marcar “${proximo[1]}” como feito hoje</button>` : ''}`;
+      ${ganha && proximo && !somenteLeitura ? `<button type="button" class="btn small" data-passo="${proximo[0]}">✓ Marcar “${proximo[1]}” como feito hoje</button>` : ''}`;
   }
 
   function renderSecItens() {
@@ -663,7 +670,7 @@
     if (!lic) { sec.innerHTML = ''; return; }
     const peds = [...lic.pedidos].sort((a, b) => (b.dataRecebimento || '').localeCompare(a.dataRecebimento || ''));
     sec.innerHTML = `<div class="sec-head"><h3><span class="sec-n"></span> Pedidos e empenhos (${peds.length})</h3>
-        <button type="button" class="btn primary small" data-novo-pedido>＋ Novo empenho</button></div>
+        <button type="button" class="btn primary small so-editor" data-novo-pedido>＋ Novo empenho</button></div>
       ${peds.length ? `<div class="table-wrap"><table class="table compact">
         <thead><tr><th>Empenho / OF</th><th>Recebido</th><th>Entregar até</th><th class="num">Valor</th><th>Status</th></tr></thead>
         <tbody>${peds.map((p) => { const s = situacaoPedido(lic, p); return `<tr class="clickable" data-abrir-pedido="${p.id}">
@@ -692,7 +699,7 @@
 
   dlgC.addEventListener('click', (e) => {
     const passo = e.target.closest('[data-passo]');
-    if (passo) {
+    if (passo && !somenteLeitura) {
       const k = passo.dataset.passo;
       const campo = formC.elements['etapas.' + k];
       if (campo && !campo.value) { campo.value = hojeISO(); sujoC = true; renderContratoHead(); toast('Data preenchida com hoje. Clique em Salvar para confirmar.'); }
@@ -705,6 +712,7 @@
 
   formC.addEventListener('submit', (e) => {
     e.preventDefault();
+    if (somenteLeitura) return;
     const f = lerForm(formC);
     if (!f.orgao || !f.numero) { toast('Preencha o órgão e o nº da licitação.'); (f.orgao ? formC.numero : formC.orgao).focus(); return; }
     if (db.config.empresas.length && !f.empresaId) { toast('Escolha a empresa.'); return; }
@@ -732,7 +740,7 @@
 
   $('#btn-excluir-contrato').addEventListener('click', () => {
     const lic = licAtual();
-    if (!lic || !confirm(`Excluir ${docNumero(lic)} (${lic.orgao}) com todos os empenhos e documentos?`)) return;
+    if (somenteLeitura || !lic || !confirm(`Excluir ${docNumero(lic)} (${lic.orgao}) com todos os empenhos e documentos?`)) return;
     const anexos = [...lic.anexos, ...lic.pedidos.flatMap((p) => p.anexos || [])];
     db.licitacoes = db.licitacoes.filter((l) => l !== lic);
     sujoC = false;
@@ -755,6 +763,7 @@
     ctxP = { lic, p };
     formP.reset();
     escreverForm(formP, p || { dataRecebimento: hojeISO(), prazoDias: lic.prazoEntregaDias || '' });
+    travarCampos(formP);
     sujoP = false;
     $('#btn-excluir-pedido').hidden = !p;
     $('#btn-salvar-pedido').textContent = p ? 'Salvar alterações' : 'Registrar empenho';
@@ -789,16 +798,16 @@
         <div><div class="k">Pagamento previsto</div><div class="v mono">${fmtData(vp)}</div></div>
       </div>
       <ol class="passos">${passos.map(([k, rot, v]) => `<li class="${v ? 'feito' : ''} ${proximo && proximo[0] === k ? 'proximo' : ''}">
-        ${v ? `<span class="passo-rot">${rot}</span>` : `<button type="button" class="passo-btn" data-passo-p="${k}" title="Marcar como feito hoje">${rot}</button>`}
+        ${v || somenteLeitura ? `<span class="passo-rot">${rot}</span>` : `<button type="button" class="passo-btn" data-passo-p="${k}" title="Marcar como feito hoje">${rot}</button>`}
         <span class="mono passo-data">${v ? fmtData(v) : '—'}</span></li>`).join('')}</ol>
       ${s.acao ? `<div class="dh-acoes"><span class="acao ${s.classe === 'danger' ? 'danger' : 'warn'}">⚠ ${esc(s.acao)}</span></div>` : ''}
-      ${proximo && proximo[0] !== 'dataRecebimento' ? `<button type="button" class="btn small" data-passo-p="${proximo[0]}">✓ Marcar “${proximo[1]}” como feito hoje</button>` : ''}`;
+      ${proximo && proximo[0] !== 'dataRecebimento' && !somenteLeitura ? `<button type="button" class="btn small" data-passo-p="${proximo[0]}">✓ Marcar “${proximo[1]}” como feito hoje</button>` : ''}`;
   }
 
   formP.addEventListener('input', (e) => { if (e.target.closest('.anexos')) return; sujoP = true; renderPedidoHead(); });
   dlgP.addEventListener('click', (e) => {
     const b = e.target.closest('[data-passo-p]');
-    if (!b) return;
+    if (!b || somenteLeitura) return;
     const campo = formP.elements[b.dataset.passoP];
     if (campo && !campo.value) {
       campo.value = hojeISO();
@@ -811,6 +820,7 @@
 
   formP.addEventListener('submit', (e) => {
     e.preventDefault();
+    if (somenteLeitura) return;
     const f = lerForm(formP);
     if (!f.numero || !f.dataRecebimento) { toast('Preencha o nº do empenho e a data de recebimento.'); return; }
     if (f.dataNF && !f.nf) { toast('Informe o número da nota fiscal.'); formP.nf.focus(); return; }
@@ -838,7 +848,7 @@
 
   $('#btn-excluir-pedido').addEventListener('click', () => {
     const { lic, p } = ctxP;
-    if (!p || !confirm(`Excluir o empenho ${p.numero} e seus documentos?`)) return;
+    if (somenteLeitura || !p || !confirm(`Excluir o empenho ${p.numero} e seus documentos?`)) return;
     lic.pedidos = lic.pedidos.filter((x) => x !== p);
     for (const a of p.anexos || []) window.Arquivos?.excluir(a).catch(() => {});
     sujoP = false;
@@ -869,9 +879,9 @@
         <div class="anexo-info"><button type="button" class="link anexo-nome" data-anexo-abrir="${a.id}">${esc(a.nome)}</button>
           <div class="muted small">${esc(a.categoria)} · ${fmtTamanho(a.tamanho || 0)} · ${fmtData(a.data)}</div></div>
         <button type="button" class="btn small" data-anexo-baixar="${a.id}">Baixar</button>
-        <button type="button" class="btn small danger" data-anexo-excluir="${a.id}" aria-label="Excluir">✕</button>
-      </li>`).join('')}</ul>` : ''}
-      <div class="dropzone">
+        <button type="button" class="btn small danger so-editor" data-anexo-excluir="${a.id}" aria-label="Excluir">✕</button>
+      </li>`).join('')}</ul>` : (somenteLeitura ? '<p class="muted">Nenhum documento anexado.</p>' : '')}
+      <div class="dropzone so-editor">
         <select class="anexo-cat" aria-label="Tipo de documento">${CATEGORIAS[tipo].map((c) => `<option>${c}</option>`).join('')}</select>
         <label class="btn small">Escolher arquivo<input type="file" class="anexo-input" multiple hidden></label>
         <span class="muted small">ou arraste aqui · até ${MAX_MB} MB · ${onde}</span>
@@ -880,7 +890,7 @@
 
   async function enviarArquivos(box, files) {
     const dono = box._dono;
-    if (!dono || !window.Arquivos) return;
+    if (!dono || !window.Arquivos || somenteLeitura) return;
     const cat = $('.anexo-cat', box)?.value || 'Outro';
     for (const file of files) {
       if (file.size > MAX_MB * 1048576) { toast(`${file.name}: maior que ${MAX_MB} MB.`); continue; }
@@ -931,7 +941,7 @@
     const a = acharAnexo(box, id);
     if (!a) return;
     if (btn.dataset.anexoExcluir) {
-      if (!confirm(`Excluir o documento “${a.nome}”?`)) return;
+      if (somenteLeitura || !confirm(`Excluir o documento “${a.nome}”?`)) return;
       try { await window.Arquivos.excluir(a); } catch (err) { /* segue removendo da lista */ }
       box._dono.anexos = box._dono.anexos.filter((x) => x !== a);
       salvar(false);
@@ -961,11 +971,11 @@
   function renderEmpresas() {
     const cfg = db.config;
     $('#lista-empresas').innerHTML = cfg.empresas.map((e) => `<div class="edit-row" data-emp="${e.id}">
-      <input value="${esc(e.nome)}" data-campo="nome" placeholder="Razão social (em branco = nome do PNCP)" autocomplete="off">
-      <input value="${esc(fmtCnpj(e.cnpj))}" data-campo="cnpj" placeholder="CNPJ" inputmode="numeric" autocomplete="off">
-      <button class="btn small danger" data-rem-emp="${e.id}" aria-label="Remover">✕</button></div>`).join('') || '<p class="muted small">Nenhuma empresa cadastrada.</p>';
+      <input value="${esc(e.nome)}" data-campo="nome" placeholder="Razão social (em branco = nome do PNCP)" autocomplete="off" ${somenteLeitura ? 'disabled' : ''}>
+      <input value="${esc(fmtCnpj(e.cnpj))}" data-campo="cnpj" placeholder="CNPJ" inputmode="numeric" autocomplete="off" ${somenteLeitura ? 'disabled' : ''}>
+      <button class="btn small danger so-editor" data-rem-emp="${e.id}" aria-label="Remover">✕</button></div>`).join('') || '<p class="muted small">Nenhuma empresa cadastrada.</p>';
     $('#lista-analistas').innerHTML = cfg.analistas.map((n, i) => `<div class="edit-row">
-      <input value="${esc(n)}" data-analista="${i}"><button class="btn small danger" data-rem-ana="${i}" aria-label="Remover">✕</button></div>`).join('') || '<p class="muted small">Nenhum analista cadastrado.</p>';
+      <input value="${esc(n)}" data-analista="${i}" ${somenteLeitura ? 'disabled' : ''}><button class="btn small danger so-editor" data-rem-ana="${i}" aria-label="Remover">✕</button></div>`).join('') || '<p class="muted small">Nenhum analista cadastrado.</p>';
   }
   function abrirEmpresas() { renderEmpresas(); dlgE.showModal(); }
   $('#btn-empresas').addEventListener('click', abrirEmpresas);
@@ -994,6 +1004,7 @@
     renderEmpresas();
   });
   dlgE.addEventListener('change', (e) => {
+    if (somenteLeitura) return;
     const row = e.target.closest('[data-emp]');
     if (row) {
       const emp = db.config.empresas.find((x) => x.id === row.dataset.emp);
@@ -1016,6 +1027,7 @@
     }
   });
   dlgE.addEventListener('click', (e) => {
+    if (somenteLeitura) return;
     const re = e.target.closest('[data-rem-emp]');
     if (re) {
       const emp = db.config.empresas.find((x) => x.id === re.dataset.remEmp);
@@ -1188,6 +1200,8 @@
     fmtMoeda, fmtData, fmtCnpj, parseData, toISO, hoje, soDigitos,
     onRender: (fn) => renderHooks.push(fn),
     onSalvar: (fn) => saveHooks.push(fn),
+    setSomenteLeitura: (v) => { somenteLeitura = !!v; if (somenteLeitura && ui.view === 'pncp') ui.view = 'painel'; render(); },
+    somenteLeitura: () => somenteLeitura,
     usarDados, STORAGE_KEY,
   };
 

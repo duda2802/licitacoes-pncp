@@ -65,16 +65,16 @@
           <strong id="usuario-email"></strong>
           <div id="sync" class="sync"></div>
         </div>
-        <button id="btn-trocar-senha" class="so-login">Trocar senha</button>
+        <button id="btn-conta-menu" class="so-login">Minha conta e usuários</button>
         <button id="btn-sair" class="so-login">Sair</button>
         <hr class="so-login">
-        <button id="btn-empresas-menu">Empresas e analistas</button>
-        <hr>
+        <button id="btn-empresas-menu" class="so-editor">Empresas e analistas</button>
+        <hr class="so-editor">
         <div class="menu-titulo">Backup</div>
         <button id="btn-exportar">Exportar dados (JSON)</button>
-        <label class="menu-file">Importar dados (JSON)<input type="file" id="inp-importar" accept=".json,application/json" hidden></label>
-        <button id="btn-exemplo">Carregar dados de exemplo</button>
-        <button id="btn-limpar" class="danger-text">Apagar tudo</button>
+        <label class="menu-file so-admin">Importar dados (JSON)<input type="file" id="inp-importar" accept=".json,application/json" hidden></label>
+        <button id="btn-exemplo" class="so-admin">Carregar dados de exemplo</button>
+        <button id="btn-limpar" class="danger-text so-admin">Apagar tudo</button>
       </div>
     </details>
   </header>
@@ -86,8 +86,9 @@
         <p class="page-sub">Contratos e atas assinados com os órgãos, e cada empenho do recebimento à cobrança.</p>
       </div>
       <div class="page-actions">
+        <button class="btn so-login" id="btn-conta"></button>
         <button class="btn" id="btn-empresas">Empresas e analistas</button>
-        <button class="btn primary" id="btn-novo">＋ Novo contrato / ata</button>
+        <button class="btn primary so-editor" id="btn-novo">＋ Novo contrato / ata</button>
       </div>
     </div>
 
@@ -96,7 +97,7 @@
       <button class="tab" data-view="contratos"><span class="tab-t">Contratos e atas</span><span class="tab-s" id="tab-s-contratos"></span></button>
       <button class="tab" data-view="pedidos"><span class="tab-t">Pedidos e empenhos</span><span class="tab-s" id="tab-s-pedidos"></span></button>
       <button class="tab" data-view="prazos"><span class="tab-t">Prazos</span><span class="tab-s" id="tab-s-prazos"></span></button>
-      <button class="tab" data-view="pncp"><span class="tab-t">PNCP</span><span class="tab-s">importar</span></button>
+      <button class="tab so-editor" data-view="pncp"><span class="tab-t">PNCP</span><span class="tab-s">importar</span></button>
     </nav>
 
     <div class="empresas-chips" id="chips-empresas"></div>
@@ -324,10 +325,11 @@
         </section>
       </div>
       <div class="drawer-foot">
-        <button type="button" class="btn danger" id="btn-excluir-contrato">Excluir</button>
+        <button type="button" class="btn danger so-editor" id="btn-excluir-contrato">Excluir</button>
         <span class="spacer"></span>
+        <span class="muted so-leitor small">Você tem acesso só de visualização.</span>
         <button type="button" class="btn" data-close>Fechar</button>
-        <button type="submit" class="btn primary" id="btn-salvar-contrato">Salvar</button>
+        <button type="submit" class="btn primary so-editor" id="btn-salvar-contrato">Salvar</button>
       </div>
     </form>
   </dialog>
@@ -367,10 +369,11 @@
         </section>
       </div>
       <div class="drawer-foot">
-        <button type="button" class="btn danger" id="btn-excluir-pedido">Excluir</button>
+        <button type="button" class="btn danger so-editor" id="btn-excluir-pedido">Excluir</button>
         <span class="spacer"></span>
+        <span class="muted so-leitor small">Você tem acesso só de visualização.</span>
         <button type="button" class="btn" data-close>Fechar</button>
-        <button type="submit" class="btn primary" id="btn-salvar-pedido">Salvar</button>
+        <button type="submit" class="btn primary so-editor" id="btn-salvar-pedido">Salvar</button>
       </div>
     </form>
   </dialog>
@@ -382,7 +385,7 @@
       <h3 class="mini">Empresas do grupo</h3>
       <p class="muted">O CNPJ é usado para buscar no PNCP os contratos e empenhos de cada empresa. Se deixar a razão social em branco, ela é preenchida com o nome que consta no PNCP.</p>
       <div id="lista-empresas" class="lista-edit"></div>
-      <form id="form-add-empresa" class="add-row" autocomplete="off">
+      <form id="form-add-empresa" class="add-row so-editor" autocomplete="off">
         <input name="empresaRazao" placeholder="Razão social da empresa" autocomplete="off" data-lpignore="true">
         <input name="empresaCnpj" placeholder="CNPJ" inputmode="numeric" autocomplete="off" data-lpignore="true" required>
         <button class="btn">Adicionar</button>
@@ -390,11 +393,51 @@
       <h3 class="mini">Analistas</h3>
       <p class="muted">Quem venceu a licitação ou cuida do contrato.</p>
       <div id="lista-analistas" class="lista-edit"></div>
-      <form id="form-add-analista" class="add-row" autocomplete="off">
+      <form id="form-add-analista" class="add-row so-editor" autocomplete="off">
         <input name="analistaNome" placeholder="Nome do analista" autocomplete="off" required>
         <button class="btn">Adicionar</button>
       </form>
       <div class="dlg-actions"><span class="spacer"></span><button class="btn primary" data-close>Pronto</button></div>
+    </div>
+  </dialog>
+
+  <!-- Minha conta e usuários (só com login) -->
+  <dialog id="dlg-conta" class="drawer drawer-estreito">
+    <div class="drawer-form">
+      <div class="drawer-head" id="conta-head"></div>
+      <div class="drawer-body">
+        <section class="sec">
+          <div class="sec-head"><h3>Trocar minha senha</h3></div>
+          <form id="form-minha-senha" class="form-grid" autocomplete="off">
+            <label>Senha atual<input type="password" name="atual" autocomplete="current-password" required></label>
+            <label>Nova senha (mín. 8)<input type="password" name="nova" autocomplete="new-password" minlength="8" required></label>
+            <div class="span-2"><button class="btn primary block">Trocar senha</button></div>
+          </form>
+        </section>
+        <section class="sec so-admin">
+          <div class="sec-head"><h3>Usuários</h3><span class="muted">Quem pode entrar no sistema</span></div>
+          <ul class="usuarios" id="conta-usuarios"></ul>
+          <form id="form-novo-usuario" class="form-grid novo-usuario" autocomplete="off">
+            <label>Nome<input name="uNome" autocomplete="off" required></label>
+            <label>E-mail<input type="email" name="uEmail" autocomplete="off" required></label>
+            <label>Senha inicial (mín. 8)<input type="text" name="uSenha" autocomplete="off" minlength="8" required></label>
+            <label>Perfil
+              <select name="uPapel">
+                <option value="editor">Permissão total</option>
+                <option value="leitor">Só visualização</option>
+                <option value="admin">Administrador</option>
+              </select>
+            </label>
+            <div class="span-2"><button class="btn primary block">Adicionar usuário</button></div>
+          </form>
+          <p class="muted small perfis-ajuda"><strong>Administrador:</strong> tudo, inclusive usuários · <strong>Permissão total:</strong> cadastra, edita, exclui, anexa e importa do PNCP · <strong>Só visualização:</strong> consulta e exporta para Excel.</p>
+        </section>
+      </div>
+      <div class="drawer-foot">
+        <span class="spacer"></span>
+        <button type="button" class="btn" id="btn-sair-conta">Sair</button>
+        <button type="button" class="btn" data-close>Fechar</button>
+      </div>
     </div>
   </dialog>
 

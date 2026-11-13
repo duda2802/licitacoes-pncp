@@ -297,7 +297,8 @@ dialog.drawer {
 }
 @keyframes entrar { from { transform: translateX(40px); opacity: 0; } }
 dialog.drawer[open] { display: flex; }
-.drawer form { display: flex; flex-direction: column; width: 100%; height: 100%; }
+.drawer > form, .drawer-form { display: flex; flex-direction: column; width: 100%; height: 100%; }
+dialog.drawer-estreito { width: min(720px, 100vw); }
 .drawer-head { padding: 1.1rem 1.5rem 1rem; border-bottom: 1px solid var(--border); background: var(--surface); }
 .drawer-body { flex: 1; overflow-y: auto; padding: 1.1rem 1.5rem; background: var(--bg); }
 .drawer-foot { display: flex; gap: .5rem; padding: .85rem 1.5rem; border-top: 1px solid var(--border); background: var(--surface); }
@@ -434,3 +435,22 @@ html:not(.com-login) .so-login { display: none !important; }
 .sync.erro { color: var(--danger); }
 html.com-login .so-local { display: none; }
 html:not(.com-login) .so-conta { display: none; }
+
+/* Perfis de acesso */
+html.somente-leitura .so-editor { display: none !important; }
+html.com-login:not(.admin) .so-admin { display: none !important; }
+html:not(.somente-leitura) .so-leitor { display: none !important; }
+#btn-conta .avatar { width: 24px; height: 24px; background: var(--osy-navy); color: #fff; }
+.avatar.grande { width: 46px; height: 46px; font-size: 1rem; background: var(--osy-navy); color: #fff; }
+.conta-quem { display: flex; gap: .85rem; align-items: center; }
+.conta-quem h2 { margin: 0; }
+.usuarios { list-style: none; margin: 0; padding: .5rem 1.1rem; }
+.usuarios li { display: flex; align-items: center; gap: .65rem; padding: .6rem 0; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+.usuarios li:last-child { border-bottom: 0; }
+.usuarios .avatar { background: var(--osy-navy); color: #fff; }
+.u-info { flex: 1; min-width: 180px; }
+.u-papel { width: auto; padding: .3rem .5rem; font-size: .88rem; }
+.u-voce { font-size: .85rem; padding: 0 .5rem; }
+.novo-usuario { border-top: 1px solid var(--border); padding-top: 1rem; }
+.sec > form.form-grid { margin: 1rem 1.1rem; }
+.perfis-ajuda { margin: 0 1.1rem 1rem !important; }

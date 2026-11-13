@@ -29,18 +29,32 @@ para outro computador.
 
 É um site estático: dá para publicar de graça no GitHub Pages (Settings → Pages → branch `main`, pasta raiz).
 
-## Login (Supabase)
+## Login, usuários e perfis (Supabase)
 
-O site pode exigir login. Cada pessoa tem os próprios dados, salvos online na conta dela, e só entra quem
-for convidado. Sem configurar, o site funciona sem login (dados só no navegador).
+Com o Supabase configurado, o site pede login e toda a equipe trabalha na **mesma base**. A administradora
+cadastra as pessoas pelo próprio site (**Usuários e senha**) e escolhe o perfil de cada uma:
+
+| Perfil | Pode |
+|---|---|
+| **Administrador** | tudo, inclusive criar/remover usuários, mudar perfis e redefinir senhas |
+| **Permissão total** | cadastrar, editar, excluir, anexar documentos e importar do PNCP |
+| **Só visualização** | consultar, baixar documentos e exportar para Excel |
+
+Sem configurar, o site funciona sem login (dados só no navegador).
+
+### Configuração (uma vez)
 
 1. Crie uma conta grátis em https://supabase.com e um projeto (região *South America (São Paulo)*).
-2. **SQL Editor** → New query → cole o conteúdo de `supabase/schema.sql` → **Run** (cria a tabela de dados e o
-   espaço privado para os documentos anexados).
-3. **Authentication → Sign In / Providers**: desligue **Allow new users to sign up** (só convidados entram).
-4. **Authentication → URL Configuration**: em **Site URL** coloque `https://duda2802.github.io/licitacoes-pncp/`.
-5. **Project Settings → API Keys**: copie a **Project URL** e a **Publishable key** (ou *anon key*) para `config.js`.
-6. Para dar acesso a alguém: **Authentication → Users → Add user → Send invitation**. A pessoa recebe um
-   e-mail, clica no link e cria a senha.
+2. **SQL Editor** → New query → cole o conteúdo de `supabase/schema.sql` → **Run**.
+3. **Edge Functions** → *Deploy a new function* → *Via Editor* → nome **`usuarios`** → apague o exemplo, cole o
+   conteúdo de `supabase/functions/usuarios/index.ts` → **Deploy**.
+4. **Authentication → Sign In / Providers**: desligue **Allow new users to sign up**.
+5. **Authentication → URL Configuration**: em **Site URL** coloque `https://duda2802.github.io/licitacoes-pncp/`.
+6. **Authentication → Users → Add user → Create new user**: crie a sua conta (e-mail + senha, marque
+   *Auto Confirm User*). O primeiro usuário do sistema vira **Administrador** automaticamente.
+7. **Project Settings → API Keys**: copie a **Project URL** e a **Publishable key** (ou *anon key*) para `config.js`.
 
-A URL e a chave pública podem ficar no código: quem protege os dados são as regras (RLS) do `schema.sql`.
+Depois disso, os demais usuários são criados pelo site, em **Usuários e senha**.
+
+A URL e a chave pública podem ficar no código: quem protege os dados são as regras (RLS) do `schema.sql` e a
+verificação de administrador na função `usuarios`, que é a única que usa a chave secreta (no servidor do Supabase).

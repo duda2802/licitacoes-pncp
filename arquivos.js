@@ -1,5 +1,5 @@
 /* Armazenamento dos documentos anexados.
- *  - Com login (Supabase): bucket privado "documentos", pasta de cada usuário (só ele acessa).
+ *  - Com login (Supabase): bucket privado "documentos", acessível só a quem tem acesso ao sistema.
  *  - Sem login: IndexedDB do navegador (os arquivos ficam só neste computador). */
 (() => {
   'use strict';
@@ -43,8 +43,8 @@
     /** Guarda o arquivo e devolve os campos a gravar no anexo ({onde, path?}). */
     async salvar(anexo, file) {
       if (remoto()) {
-        const { sb, usuario } = window.Auth;
-        const path = `${usuario().id}/${anexo.id}/${nomeSeguro(file.name)}`;
+        const { sb } = window.Auth;
+        const path = `empresa/${anexo.id}/${nomeSeguro(file.name)}`; // base única da empresa
         const { error } = await sb.storage.from(BUCKET).upload(path, file, {
           contentType: file.type || 'application/octet-stream', upsert: false,
         });
