@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Licitações OSY</title>
+  <meta name="theme-color" content="#0A3855">
+  <link rel="icon" href="assets/logo-osy.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="./" aria-label="Grupo OSY — Licitações">
+      <img src="assets/logo-osy-branca.png" alt="Grupo OSY" width="156" height="27">
+      <span class="brand-sub">Licitações</span>
+    </a>
+    <nav class="tabs" role="tablist">
+      <button class="tab active" data-view="painel">Painel</button>
+      <button class="tab" data-view="licitacoes">Licitações</button>
+      <button class="tab" data-view="prazos">Prazos</button>
+    </nav>
+    <div class="top-actions">
+      <button id="btn-nova" class="btn primary">+ Nova licitação</button>
+      <details class="menu">
+        <summary class="btn">Backup ▾</summary>
+        <div class="menu-list">
+          <button id="btn-exportar">Exportar dados (JSON)</button>
+          <label class="menu-file">Importar dados (JSON)<input type="file" id="inp-importar" accept=".json,application/json" hidden></label>
+          <button id="btn-exemplo">Carregar dados de exemplo</button>
+          <button id="btn-limpar" class="danger-text">Apagar tudo</button>
+        </div>
+      </details>
+    </div>
+  </header>
+
+  <main>
+    <!-- PAINEL -->
+    <section id="view-painel" class="view active">
+      <div class="kpis" id="kpis"></div>
+      <div class="grid-2">
+        <div class="card">
+          <h2>⚠️ Atenção agora</h2>
+          <ul class="alert-list" id="alertas"></ul>
+        </div>
+        <div class="card">
+          <h2>Próximos prazos</h2>
+          <ul class="alert-list" id="proximos"></ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- LICITAÇÕES -->
+    <section id="view-licitacoes" class="view">
+      <div class="filters">
+        <input type="search" id="f-busca" placeholder="Buscar por órgão, número ou objeto…">
+        <select id="f-resultado">
+          <option value="">Todos os resultados</option>
+          <option value="ganha">Ganhas</option>
+          <option value="aguardando">Aguardando resultado</option>
+          <option value="perdida">Perdidas</option>
+        </select>
+        <select id="f-situacao">
+          <option value="">Todas as situações</option>
+          <option value="vigente">Contrato/ata vigente</option>
+          <option value="vencendo">Vigência acabando (≤ 60 dias)</option>
+          <option value="encerrada">Vigência encerrada</option>
+        </select>
+      </div>
+      <div class="table-wrap">
+        <table class="table" id="tabela-licitacoes">
+          <thead>
+            <tr>
+              <th>Órgão / Número</th>
+              <th>Objeto</th>
+              <th>Resultado</th>
+              <th class="num">Valor ganho</th>
+              <th class="num">Saldo</th>
+              <th>Vigência</th>
+              <th>Pendências</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <p class="empty" id="vazio-licitacoes" hidden></p>
+    </section>
+
+    <!-- PRAZOS -->
+    <section id="view-prazos" class="view">
+      <div class="filters">
+        <select id="f-prazo-tipo">
+          <option value="">Todos os prazos</option>
+          <option value="entrega">Entregas</option>
+          <option value="pagamento">Pagamentos a receber</option>
+          <option value="vigencia">Vigências</option>
+        </select>
+        <label class="check"><input type="checkbox" id="f-prazo-concluidos"> Mostrar concluídos</label>
+      </div>
+      <div class="table-wrap">
+        <table class="table" id="tabela-prazos">
+          <thead>
+            <tr>
+              <th>Quando</th>
+              <th>Tipo</th>
+              <th>Descrição</th>
+              <th>Órgão</th>
+              <th class="num">Valor</th>
+              <th>Situação</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <p class="empty" id="vazio-prazos" hidden>Nenhum prazo para mostrar.</p>
+    </section>
+  </main>
+
+  <!-- Modal: licitação -->
+  <dialog id="dlg-licitacao">
+    <form id="form-licitacao" method="dialog">
+      <h2 id="dlg-licitacao-titulo">Nova licitação</h2>
+      <fieldset>
+        <legend>Licitação</legend>
+        <div class="form-grid">
+          <label class="span-2">Órgão *<input name="orgao" required></label>
+          <label>Nº do processo / pregão *<input name="numero" required placeholder="Ex.: PE 12/2026"></label>
+          <label>Modalidade
+            <select name="modalidade">
+              <option>Pregão eletrônico</option>
+              <option>Pregão presencial</option>
+              <option>Concorrência</option>
+              <option>Dispensa</option>
+              <option>Inexigibilidade</option>
+              <option>Outra</option>
+            </select>
+          </label>
+          <label class="span-2">Objeto<input name="objeto" placeholder="O que você vai fornecer"></label>
+          <label>Data da sessão<input type="date" name="dataSessao"></label>
+          <label>Resultado
+            <select name="resultado">
+              <option value="aguardando">Aguardando resultado</option>
+              <option value="ganha">Ganha</option>
+              <option value="perdida">Perdida</option>
+            </select>
+          </label>
+          <label>Valor ganho (R$)<input name="valor" inputmode="decimal" placeholder="0,00"></label>
+          <label>Link (PNCP / portal)<input type="url" name="link" placeholder="https://"></label>
+        </div>
+      </fieldset>
+      <fieldset class="so-ganha">
+        <legend>Contrato / Ata</legend>
+        <div class="form-grid">
+          <label>Instrumento
+            <select name="instrumento">
+              <option value="ata">Ata de registro de preços</option>
+              <option value="contrato">Contrato</option>
+              <option value="empenho">Só empenho / OF</option>
+            </select>
+          </label>
+          <label>Nº do contrato / ata<input name="numeroInstrumento"></label>
+          <label>Início da vigência<input type="date" name="vigenciaInicio"></label>
+          <label>Fim da vigência<input type="date" name="vigenciaFim"></label>
+          <label>Prazo de entrega padrão (dias)<input type="number" min="0" name="prazoEntregaDias" placeholder="Ex.: 30"></label>
+          <label>Prazo de pagamento (dias após entrega)<input type="number" min="0" name="prazoPagamentoDias" placeholder="Ex.: 30"></label>
+          <label class="span-2">Contato no órgão<input name="contato" placeholder="Nome, telefone, e-mail do fiscal/gestor"></label>
+        </div>
+      </fieldset>
+      <label>Observações<textarea name="obs" rows="2"></textarea></label>
+      <div class="dlg-actions">
+        <button type="button" class="btn danger" id="btn-excluir-licitacao" hidden>Excluir</button>
+        <span class="spacer"></span>
+        <button type="button" class="btn" data-close>Cancelar</button>
+        <button type="submit" class="btn primary">Salvar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Modal: detalhe -->
+  <dialog id="dlg-detalhe" class="wide">
+    <div id="detalhe-conteudo"></div>
+  </dialog>
+
+  <!-- Modal: pedido / empenho -->
+  <dialog id="dlg-pedido">
+    <form id="form-pedido" method="dialog">
+      <h2 id="dlg-pedido-titulo">Novo pedido / empenho</h2>
+      <div class="form-grid">
+        <label>Nº do empenho / OF *<input name="numero" required></label>
+        <label>Valor (R$)<input name="valor" inputmode="decimal" placeholder="0,00"></label>
+        <label>Recebido em *<input type="date" name="dataRecebimento" required></label>
+        <label>Prazo de entrega (dias corridos)<input type="number" min="0" name="prazoDias"></label>
+        <label class="span-2">Itens / descrição<input name="descricao"></label>
+      </div>
+      <fieldset>
+        <legend>Andamento</legend>
+        <div class="form-grid">
+          <label>Entregue em<input type="date" name="dataEntrega"></label>
+          <label>Nº da nota fiscal<input name="nf"></label>
+          <label>Pago em<input type="date" name="dataPagamento"></label>
+        </div>
+      </fieldset>
+      <label>Observações<textarea name="obs" rows="2"></textarea></label>
+      <div class="dlg-actions">
+        <button type="button" class="btn danger" id="btn-excluir-pedido" hidden>Excluir</button>
+        <span class="spacer"></span>
+        <button type="button" class="btn" data-close>Cancelar</button>
+        <button type="submit" class="btn primary">Salvar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <footer class="foot">
+    <span>Transformação que se vê no caminho.</span>
+    <span class="muted-foot">Dados salvos neste navegador · faça backup regularmente</span>
+  </footer>
+
+  <div id="toast" role="status" aria-live="polite"></div>
+  <script src="app.js"></script>
+</body>
+</html>
