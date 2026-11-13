@@ -1125,6 +1125,39 @@
     fecharMenu();
     toast('Backup exportado (os arquivos anexados não vão no backup).');
   });
+  /** Junta um arquivo importado aos dados atuais (não apaga nada).
+   *  Empresas: casadas pelo CNPJ. Contratos: pelo id ou pelo par CNPJ do órgão + nº do contrato/ata. */
+  function juntarDados(data) {
+    const entrada = normalizar(JSON.parse(JSON.stringify(data)));
+    const cfg = db.config;
+    const mapaEmp = {};
+    let empresas = 0;
+    for (const e of entrada.config.empresas) {
+      const existente = cfg.empresas.find((x) => x.cnpj && x.cnpj === e.cnpj);
+      if (existente) { mapaEmp[e.id] = existente.id; if (!existente.nome && e.nome) existente.nome = e.nome; }
+      else { cfg.empresas.push(e); mapaEmp[e.id] = e.id; empresas++; }
+    }
+    for (const a of entrada.config.analistas) if (!cfg.analistas.includes(a)) cfg.analistas.push(a);
+    let novos = 0, atualizados = 0;
+    const chave = (l) => (l.orgaoCnpj && l.numeroInstrumento ? soDigitos(l.orgaoCnpj) + '|' + l.numeroInstrumento.trim().toUpperCase() : null);
+    for (const l of entrada.licitacoes) {
+      if (l.empresaId) l.empresaId = mapaEmp[l.empresaId] || l.empresaId;
+      if (!l.empresaId && cfg.empresas.length === 1) l.empresaId = cfg.empresas[0].id;
+      const atual = db.licitacoes.find((x) => x.id === l.id) || (chave(l) && db.licitacoes.find((x) => chave(x) === chave(l)));
+      if (!atual) { db.licitacoes.push(l); novos++; continue; }
+      // Atualiza só os campos preenchidos no arquivo; mantém empenhos, documentos e o que já foi feito
+      for (const [k, v] of Object.entries(l)) {
+        if (['id', 'pedidos', 'anexos', 'etapas'].includes(k)) continue;
+        if (v !== '' && v != null && !(Array.isArray(v) && !v.length)) atual[k] = v;
+      }
+      atual.etapas = { ...(l.etapas || {}), ...Object.fromEntries(Object.entries(atual.etapas || {}).filter(([, v]) => v)) };
+      const ids = new Set(atual.pedidos.map((p) => p.id));
+      for (const p of l.pedidos || []) if (!ids.has(p.id)) atual.pedidos.push(p);
+      atualizados++;
+    }
+    return { novos, atualizados, empresas };
+  }
+
   $('#inp-importar').addEventListener('change', async (e) => {
     const file = e.target.files[0];
     e.target.value = '';
@@ -1133,10 +1166,9 @@
     try {
       const data = JSON.parse(await file.text());
       if (!Array.isArray(data.licitacoes)) throw new Error('formato');
-      if (db.licitacoes.length && !confirm('Substituir os dados atuais pelos do arquivo?')) return;
-      db = normalizar(data);
+      const r = juntarDados(data);
       salvar();
-      toast(`${db.licitacoes.length} contratos/licitações importados.`);
+      toast(`Importado: ${r.novos} novo(s), ${r.atualizados} atualizado(s)${r.empresas ? `, ${r.empresas} empresa(s) nova(s)` : ''}.`);
     } catch (err) { toast('Arquivo inválido.'); }
   });
   $('#btn-limpar').addEventListener('click', () => {
