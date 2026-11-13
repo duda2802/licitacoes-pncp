@@ -10,8 +10,48 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
+  <script src="config.js"></script>
 </head>
 <body>
+  <!-- Tela de login (só aparece quando o login está configurado em config.js) -->
+  <div id="auth" class="auth">
+    <div class="auth-card">
+      <img src="assets/logo-osy.png" alt="Grupo OSY" class="auth-logo" width="200" height="35">
+      <div class="auth-sub">Licitações</div>
+
+      <p id="auth-carregando" class="muted">Carregando…</p>
+
+      <form id="form-login" hidden>
+        <h1>Entrar</h1>
+        <label>E-mail<input type="email" name="email" autocomplete="username" required></label>
+        <label>Senha<input type="password" name="senha" autocomplete="current-password" required></label>
+        <button type="submit" class="btn primary block">Entrar</button>
+        <a href="#" id="link-esqueci" class="auth-link">Esqueci minha senha</a>
+        <p class="muted auth-nota">O acesso é só por convite. Peça à administradora para te cadastrar.</p>
+      </form>
+
+      <form id="form-esqueci" hidden>
+        <h1>Esqueci minha senha</h1>
+        <p class="muted">Informe seu e-mail. Enviaremos um link para você criar uma nova senha.</p>
+        <label>E-mail<input type="email" name="email" autocomplete="username" required></label>
+        <button type="submit" class="btn primary block">Enviar link</button>
+        <a href="#" id="link-voltar" class="auth-link">← Voltar para o login</a>
+      </form>
+
+      <form id="form-senha" hidden>
+        <h1>Criar senha</h1>
+        <p class="muted">Conta: <strong id="senha-email"></strong></p>
+        <label>Nova senha<input type="password" name="senha" autocomplete="new-password" minlength="8" required></label>
+        <label>Confirme a senha<input type="password" name="confirmar" autocomplete="new-password" minlength="8" required></label>
+        <button type="submit" class="btn primary block">Salvar senha</button>
+        <a href="#" id="link-cancelar-senha" class="auth-link">Cancelar</a>
+      </form>
+
+      <p id="auth-msg" class="auth-msg" role="alert" hidden></p>
+    </div>
+    <p class="auth-slogan">Transformação que se vê no caminho.</p>
+  </div>
+
   <header class="topbar">
     <a class="brand" href="./" aria-label="Grupo OSY — Licitações">
       <img src="assets/logo-osy-branca.png" alt="Grupo OSY" width="156" height="27">
@@ -26,8 +66,17 @@
     <div class="top-actions">
       <button id="btn-nova" class="btn primary">+ Nova licitação</button>
       <details class="menu">
-        <summary class="btn">Backup ▾</summary>
+        <summary class="btn">Menu ▾</summary>
         <div class="menu-list">
+          <div class="so-login menu-conta">
+            <div class="muted">Conectado como</div>
+            <strong id="usuario-email"></strong>
+            <div id="sync" class="sync"></div>
+          </div>
+          <button id="btn-trocar-senha" class="so-login">Trocar senha</button>
+          <button id="btn-sair" class="so-login">Sair</button>
+          <hr class="so-login">
+          <div class="menu-titulo">Backup</div>
           <button id="btn-exportar">Exportar dados (JSON)</button>
           <label class="menu-file">Importar dados (JSON)<input type="file" id="inp-importar" accept=".json,application/json" hidden></label>
           <button id="btn-exemplo">Carregar dados de exemplo</button>
@@ -263,11 +312,14 @@
 
   <footer class="foot">
     <span>Transformação que se vê no caminho.</span>
-    <span class="muted-foot">Dados salvos neste navegador · faça backup regularmente</span>
+    <span class="muted-foot so-local">Dados salvos neste navegador · faça backup regularmente</span>
+    <span class="muted-foot so-conta">Seus dados ficam salvos na sua conta</span>
   </footer>
 
   <div id="toast" role="status" aria-live="polite"></div>
+  <script src="assets/vendor/supabase-2.118.0.js"></script>
   <script src="app.js"></script>
+  <script src="auth.js"></script>
   <script src="pncp.js"></script>
 </body>
 </html>

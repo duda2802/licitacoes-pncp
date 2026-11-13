@@ -9,11 +9,14 @@
   const PRAZO_PAGAMENTO_PADRAO = 30;
 
   // ---------- Estado ----------
+  // Sem login: dados só neste navegador. Com login (auth.js): cópia local por usuário + nuvem.
+  let storageKey = STORAGE_KEY;
   let db = carregar();
+  const saveHooks = [];
 
   function carregar() {
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
+      const raw = localStorage.getItem(storageKey);
       if (raw) {
         const data = JSON.parse(raw);
         if (Array.isArray(data.licitacoes)) return normalizar(data);
@@ -26,9 +29,17 @@
     return data;
   }
   function salvar(rerender = true) {
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(db)); }
-    catch (e) { toast('Não foi possível salvar no navegador. Exporte um backup!'); }
+    try { localStorage.setItem(storageKey, JSON.stringify(db)); }
+    catch (e) { if (!saveHooks.length) toast('Não foi possível salvar no navegador. Exporte um backup!'); }
+    saveHooks.forEach((fn) => fn(db));
     if (rerender) render();
+  }
+  /** Troca o conjunto de dados em uso (ex.: ao entrar com um usuário). */
+  function usarDados(chave, dados) {
+    storageKey = chave;
+    db = dados ? normalizar(dados) : carregar();
+    try { localStorage.setItem(storageKey, JSON.stringify(db)); } catch (e) { /* ok */ }
+    render();
   }
   const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 
@@ -594,6 +605,8 @@
     db: () => db, salvar, uid, esc, toast, abrirDetalhe,
     fmtMoeda, fmtData, fmtCnpj, parseData, toISO, hoje,
     onRender: (fn) => renderHooks.push(fn),
+    onSalvar: (fn) => saveHooks.push(fn),
+    usarDados, STORAGE_KEY,
   };
 
   render();

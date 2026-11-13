@@ -46,3 +46,18 @@ para outro computador.
 ## Publicar
 
 É um site estático: dá para publicar de graça no GitHub Pages (Settings → Pages → branch `main`, pasta raiz).
+
+## Login (Supabase)
+
+O site pode exigir login. Cada pessoa tem os próprios dados, salvos online na conta dela, e só entra quem
+for convidado. Sem configurar, o site funciona sem login (dados só no navegador).
+
+1. Crie uma conta grátis em https://supabase.com e um projeto (região *South America (São Paulo)*).
+2. **SQL Editor** → New query → cole o conteúdo de `supabase/schema.sql` → **Run**.
+3. **Authentication → Sign In / Providers**: desligue **Allow new users to sign up** (só convidados entram).
+4. **Authentication → URL Configuration**: em **Site URL** coloque `https://duda2802.github.io/licitacoes-pncp/`.
+5. **Project Settings → API Keys**: copie a **Project URL** e a **Publishable key** (ou *anon key*) para `config.js`.
+6. Para dar acesso a alguém: **Authentication → Users → Add user → Send invitation**. A pessoa recebe um
+   e-mail, clica no link e cria a senha.
+
+A URL e a chave pública podem ficar no código: quem protege os dados são as regras (RLS) do `schema.sql`.
