@@ -16,15 +16,19 @@
       const raw = localStorage.getItem(STORAGE_KEY);
       if (raw) {
         const data = JSON.parse(raw);
-        if (Array.isArray(data.licitacoes)) return data;
+        if (Array.isArray(data.licitacoes)) return normalizar(data);
       }
     } catch (e) { /* storage indisponível */ }
-    return { licitacoes: [] };
+    return normalizar({ licitacoes: [] });
   }
-  function salvar() {
+  function normalizar(data) {
+    data.config = { cnpjs: [], ...(data.config || {}) };
+    return data;
+  }
+  function salvar(rerender = true) {
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(db)); }
     catch (e) { toast('Não foi possível salvar no navegador. Exporte um backup!'); }
-    render();
+    if (rerender) render();
   }
   const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 
@@ -131,11 +135,12 @@
       if (lic.resultado !== 'ganha') continue;
       for (const p of lic.pedidos || []) {
         const s = situacaoPedido(lic, p);
-        const base = { licId: lic.id, pedidoId: p.id, orgao: lic.orgao, valor: p.valor };
+        const base = { licId: lic.id, pedidoId: p.id, orgao: p.orgao || lic.orgao, valor: p.valor };
+        const desc = p.descricao && !p.pncp ? ' — ' + p.descricao : '';
         const venc = vencimentoEntrega(lic, p);
         out.push({
           ...base, tipo: 'entrega', data: venc,
-          descricao: `Entrega do empenho ${p.numero}${p.descricao ? ' — ' + p.descricao : ''}`,
+          descricao: `Entrega do empenho ${p.numero}${desc}`,
           concluido: !!p.dataEntrega,
           situacao: p.dataEntrega ? { rotulo: `Entregue ${fmtData(p.dataEntrega)}`, classe: 'ok' } : s,
         });
@@ -162,7 +167,9 @@
   }
 
   // ---------- Render ----------
+  const renderHooks = [];
   function render() {
+    renderHooks.forEach((fn) => fn());
     renderPainel();
     renderLicitacoes();
     renderPrazos();
@@ -202,7 +209,7 @@
       if (p.tipo === 'vigencia') return p.situacao.chave === 'vencendo';
       return p.situacao.classe === 'danger' || p.situacao.classe === 'warn';
     });
-    const proximos = prazos.filter((p) => !urgentes.includes(p) && p.data && diasAte(p.data) >= 0).slice(0, 8);
+    const proximos = prazos.filter((p) => !urgentes.includes(p) && p.data && diasAte(p.data) >= 0).slice(0, 6);
 
     // Licitações aguardando resultado há muito tempo também viram alerta
     const semResultado = lics.filter((l) => l.resultado === 'aguardando' && l.dataSessao && diasAte(l.dataSessao) < -15);
@@ -224,10 +231,14 @@
         </div>
       </li>`;
 
-    const alertasHtml = urgentes.map(itemPrazo).join('') + semResultado.map(itemSemRes).join('');
+    const LIMITE = 8;
+    const todosAlertas = [...urgentes.map(itemPrazo), ...semResultado.map(itemSemRes)];
+    const mais = todosAlertas.length - LIMITE;
+    const alertasHtml = todosAlertas.slice(0, LIMITE).join('') +
+      (mais > 0 ? `<li class="ver-mais" data-ir="prazos">+ ${mais} outro${mais > 1 ? 's' : ''} — ver todos em Prazos →</li>` : '');
     $('#alertas').innerHTML = alertasHtml || '<li class="none">Nada urgente. 🎉</li>';
     $('#proximos').innerHTML = proximos.map(itemPrazo).join('') ||
-      `<li class="none">${lics.length ? 'Nenhum prazo futuro cadastrado.' : 'Cadastre sua primeira licitação em “+ Nova licitação” ou carregue dados de exemplo no menu Backup.'}</li>`;
+      `<li class="none">${lics.length ? 'Nenhum prazo futuro cadastrado.' : 'Importe suas licitações na aba PNCP, cadastre em “+ Nova licitação” ou carregue dados de exemplo no menu Backup.'}</li>`;
   }
 
   function pendenciasLic(lic) {
@@ -320,6 +331,7 @@
           ${lic.link ? ` <a href="${esc(lic.link)}" target="_blank" rel="noopener">Abrir no portal ↗</a>` : ''}
         </div>
         <div style="display:flex;gap:.5rem">
+          ${lic.pncp?.compra ? '<button class="btn" data-acao="pncp-atualizar" title="Buscar novos empenhos no PNCP">↻ PNCP</button>' : ''}
           <button class="btn" data-acao="editar">Editar</button>
           <button class="btn" data-close>Fechar</button>
         </div>
@@ -344,7 +356,7 @@
         <tbody>${pedidos.map((p) => {
           const s = situacaoPedido(lic, p);
           return `<tr>
-            <td><strong>${esc(p.numero)}</strong>${p.descricao ? `<div class="muted">${esc(p.descricao)}</div>` : ''}</td>
+            <td><strong>${p.link ? `<a href="${esc(p.link)}" target="_blank" rel="noopener">${esc(p.numero)}</a>` : esc(p.numero)}</strong>${p.orgao ? `<div class="muted clamp1" title="${esc(p.orgao)}">${esc(p.orgao)}</div>` : ''}${p.descricao ? `<div class="muted clamp1" title="${esc(p.descricao)}">${esc(p.descricao)}</div>` : ''}</td>
             <td>${fmtData(p.dataRecebimento)}</td>
             <td>${fmtData(vencimentoEntrega(lic, p))}</td>
             <td>${p.dataEntrega ? fmtData(p.dataEntrega) + (p.nf ? `<div class="muted">NF ${esc(p.nf)}</div>` : '') : `<button class="btn small" data-acao="entregar" data-pedido="${p.id}">Marcar entregue</button>`}</td>
@@ -355,6 +367,18 @@
           </tr>`;
         }).join('')}</tbody>
       </table></div>` : '<p class="muted">Nenhum empenho recebido ainda. Quando o órgão enviar a nota de empenho ou ordem de fornecimento, cadastre aqui para controlar o prazo de entrega.</p>'}
+      ${lic.itens?.length ? `
+      <div class="section-head"><h3>Itens ganhos (${lic.itens.length})</h3><span class="badge info">via PNCP</span></div>
+      <div class="table-wrap"><table class="table">
+        <thead><tr><th>Item</th><th>Descrição</th><th class="num">Qtd.</th><th class="num">Valor unit.</th><th class="num">Total</th></tr></thead>
+        <tbody>${lic.itens.map((it) => `<tr>
+          <td>${it.numero}</td>
+          <td><div class="clamp">${esc(it.descricao)}</div></td>
+          <td class="num">${Number(it.quantidade).toLocaleString('pt-BR')} <span class="muted">${esc(it.unidade || '')}</span></td>
+          <td class="num">${fmtMoeda(it.valorUnit)}</td>
+          <td class="num">${fmtMoeda(it.valorTotal)}</td>
+        </tr>`).join('')}</tbody>
+      </table></div>` : ''}
       ` : `<p class="muted">${lic.resultado === 'aguardando' ? 'Quando sair o resultado, edite a licitação e marque como “Ganha” para controlar contrato, empenhos, entregas e pagamentos.' : 'Licitação perdida.'}</p>`}
       ${lic.obs ? `<h3>Observações</h3><p style="white-space:pre-wrap">${esc(lic.obs)}</p>` : ''}
     `;
@@ -369,6 +393,7 @@
     const acao = btn.dataset.acao;
     const p = lic.pedidos?.find((x) => x.id === btn.dataset.pedido);
     if (acao === 'editar') abrirFormLicitacao(lic);
+    else if (acao === 'pncp-atualizar') window.PNCP?.atualizarLicitacao(lic);
     else if (acao === 'novo-pedido') abrirFormPedido(lic);
     else if (acao === 'editar-pedido') abrirFormPedido(lic, p);
     else if (acao === 'entregar' && p) { p.dataEntrega = toISO(hoje()); salvar(); toast('Entrega registrada hoje. Edite para ajustar a data ou incluir a NF.'); }
@@ -477,6 +502,8 @@
 
   document.addEventListener('click', (e) => {
     if (e.target.closest('[data-close]')) { e.target.closest('dialog')?.close(); return; }
+    const ir = e.target.closest('[data-ir]');
+    if (ir) { mostrarView(ir.dataset.ir); return; }
     const row = e.target.closest('[data-lic]');
     if (row && !e.target.closest('dialog')) abrirDetalhe(row.dataset.lic);
   });
@@ -507,7 +534,7 @@
       const data = JSON.parse(await file.text());
       if (!Array.isArray(data.licitacoes)) throw new Error('formato');
       if (db.licitacoes.length && !confirm('Substituir os dados atuais pelos do arquivo?')) return;
-      db = data;
+      db = normalizar(data);
       salvar();
       toast(`${db.licitacoes.length} licitações importadas.`);
     } catch (err) {
@@ -518,7 +545,7 @@
   $('#btn-limpar').addEventListener('click', () => {
     fecharMenu();
     if (!confirm('Apagar TODAS as licitações deste navegador? Exporte um backup antes se quiser guardar.')) return;
-    db = { licitacoes: [] };
+    db = normalizar({ licitacoes: [], config: db.config });
     salvar();
   });
 
@@ -559,6 +586,15 @@
     salvar();
     toast('Dados de exemplo carregados.');
   });
+
+  const fmtCnpj = (c) => String(c).replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5');
+
+  // API usada pelo módulo do PNCP (pncp.js)
+  window.App = {
+    db: () => db, salvar, uid, esc, toast, abrirDetalhe,
+    fmtMoeda, fmtData, fmtCnpj, parseData, toISO, hoje,
+    onRender: (fn) => renderHooks.push(fn),
+  };
 
   render();
 })();

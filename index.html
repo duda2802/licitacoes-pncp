@@ -21,6 +21,7 @@
       <button class="tab active" data-view="painel">Painel</button>
       <button class="tab" data-view="licitacoes">Licitações</button>
       <button class="tab" data-view="prazos">Prazos</button>
+      <button class="tab" data-view="pncp">PNCP</button>
     </nav>
     <div class="top-actions">
       <button id="btn-nova" class="btn primary">+ Nova licitação</button>
@@ -115,6 +116,54 @@
         </table>
       </div>
       <p class="empty" id="vazio-prazos" hidden>Nenhum prazo para mostrar.</p>
+    </section>
+
+    <!-- PNCP -->
+    <section id="view-pncp" class="view">
+      <div class="grid-2 pncp-top">
+        <div class="card">
+          <h2>Buscar minhas licitações no PNCP</h2>
+          <p class="muted">Encontra os contratos, empenhos e autorizações de fornecimento publicados no PNCP em nome da sua empresa e agrupa por licitação.</p>
+          <div class="form-grid">
+            <label class="span-2">CNPJ(s) da empresa — um por linha
+              <textarea id="pncp-cnpjs" rows="3" placeholder="00.000.000/0001-00"></textarea>
+            </label>
+            <label>Buscar a partir de<input type="date" id="pncp-desde"></label>
+            <label>Empenhos recebidos antes de<input type="date" id="pncp-concluidos"></label>
+            <p class="muted span-2 hint">…entram como já <strong>entregues e pagos</strong>, para o histórico não aparecer como atrasado. Deixe em branco para controlar tudo.</p>
+            <label class="check-label span-2"><input type="checkbox" id="pncp-itens" checked> Trazer itens ganhos e valor da ata <span class="muted">(mais lento)</span></label>
+          </div>
+          <div class="row-actions">
+            <button class="btn primary" id="pncp-buscar">Buscar no PNCP</button>
+            <button class="btn" id="pncp-cancelar" hidden>Cancelar</button>
+            <span class="muted" id="pncp-ultima"></span>
+          </div>
+        </div>
+        <div class="card">
+          <h2>Importar por link</h2>
+          <p class="muted">Ganhou e ainda não saiu empenho? Cole o link do edital ou da ata no PNCP para importar já com os itens ganhos e a vigência.</p>
+          <label>Link do PNCP
+            <input type="url" id="pncp-link" placeholder="https://pncp.gov.br/app/editais/…  ou  …/app/atas/…">
+          </label>
+          <div class="row-actions"><button class="btn" id="pncp-link-btn">Importar</button></div>
+        </div>
+      </div>
+      <p id="pncp-status" class="pncp-status" role="status" hidden></p>
+      <div id="pncp-resultados" hidden>
+        <div class="section-head">
+          <h3>Encontrado no PNCP</h3>
+          <button class="btn primary" id="pncp-importar" disabled>Importar selecionadas</button>
+        </div>
+        <div class="table-wrap">
+          <table class="table" id="pncp-tabela">
+            <thead><tr>
+              <th><input type="checkbox" id="pncp-todos" aria-label="Selecionar todas"></th>
+              <th>Órgão / Licitação</th><th>Objeto</th><th class="num">Contratos / empenhos</th><th class="num">Valor</th><th>Último</th><th>Situação</th>
+            </tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
     </section>
   </main>
 
@@ -219,5 +268,6 @@
 
   <div id="toast" role="status" aria-live="polite"></div>
   <script src="app.js"></script>
+  <script src="pncp.js"></script>
 </body>
 </html>
