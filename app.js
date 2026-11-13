@@ -189,7 +189,12 @@
     if (l.situacao === 'rescindido') st = { chave: 'rescindido', rotulo: 'Rescindido / cancelado', classe: 'danger' };
     else if (l.situacao === 'suspenso') st = { chave: 'suspenso', rotulo: 'Suspenso', classe: 'warn' };
     else if (l.vigenciaFim && diasAte(l.vigenciaFim) < 0) st = { chave: 'encerrado', rotulo: 'Encerrado', classe: '' };
-    else if (precisaAssinatura(l) && !e.assinadoNos) {
+    else if (precisaAssinatura(l) && !e.recebido && !e.assinadoNos) {
+      // Ganhou, mas o órgão ainda não mandou o contrato/ata para assinar
+      st = { chave: 'aguardando_contrato', rotulo: 'Aguardando o contrato', classe: 'info' };
+      const ref = l.dataHomologacao || l.dataSessao;
+      if (ref && diasAte(ref) < -30) acoes.push({ texto: 'Cobrar do órgão o envio do contrato/ata', nivel: 'warn' });
+    } else if (precisaAssinatura(l) && !e.assinadoNos) {
       st = { chave: 'aguardando_assinatura', rotulo: 'Aguardando assinatura', classe: 'warn' };
       acoes.push({ texto: 'Assinar e devolver ao órgão', nivel: e.recebido && diasAte(e.recebido) < -5 ? 'danger' : 'warn' });
     } else if (precisaAssinatura(l) && !e.assinadoOrgao) {
@@ -356,6 +361,7 @@
   const PILLS_C = [
     ['andamento', 'Em andamento', (s) => emAndamento(s)],
     ['acao', 'Ação nossa pendente', (s) => s.acoes.length > 0],
+    ['contrato', 'Aguardando contrato', (s) => s.chave === 'aguardando_contrato'],
     ['assinatura', 'Aguardando assinatura', (s) => s.chave === 'aguardando_assinatura' || s.chave === 'aguardando_orgao'],
     ['assinado', 'Assinado', (s) => s.chave === 'assinado'],
     ['vigente', 'Vigente', (s) => s.chave === 'vigente'],
@@ -579,7 +585,7 @@
     formC.reset();
     const base = lic || {
       resultado: 'ganha', instrumento: 'ata', modalidade: 'Pregão eletrônico',
-      empresaId: ui.empresa || db.config.empresas[0]?.id || '', etapas: { recebido: hojeISO() },
+      empresaId: ui.empresa || db.config.empresas[0]?.id || '', etapas: {},
     };
     escreverForm(formC, base);
     travarCampos(formC);
