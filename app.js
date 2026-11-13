@@ -961,8 +961,8 @@
   function renderEmpresas() {
     const cfg = db.config;
     $('#lista-empresas').innerHTML = cfg.empresas.map((e) => `<div class="edit-row" data-emp="${e.id}">
-      <input value="${esc(e.nome)}" data-campo="nome" placeholder="Nome da empresa">
-      <input value="${esc(fmtCnpj(e.cnpj))}" data-campo="cnpj" placeholder="CNPJ" inputmode="numeric">
+      <input value="${esc(e.nome)}" data-campo="nome" placeholder="Razão social (em branco = nome do PNCP)" autocomplete="off">
+      <input value="${esc(fmtCnpj(e.cnpj))}" data-campo="cnpj" placeholder="CNPJ" inputmode="numeric" autocomplete="off">
       <button class="btn small danger" data-rem-emp="${e.id}" aria-label="Remover">✕</button></div>`).join('') || '<p class="muted small">Nenhuma empresa cadastrada.</p>';
     $('#lista-analistas').innerHTML = cfg.analistas.map((n, i) => `<div class="edit-row">
       <input value="${esc(n)}" data-analista="${i}"><button class="btn small danger" data-rem-ana="${i}" aria-label="Remover">✕</button></div>`).join('') || '<p class="muted small">Nenhum analista cadastrado.</p>';
@@ -974,10 +974,10 @@
   $('#form-add-empresa').addEventListener('submit', (e) => {
     e.preventDefault();
     const f = e.target;
-    const cnpj = soDigitos(f.cnpj.value);
+    const cnpj = soDigitos(f.empresaCnpj.value);
     if (cnpj.length !== 14) { toast('CNPJ precisa ter 14 dígitos.'); return; }
     if (db.config.empresas.some((x) => x.cnpj === cnpj)) { toast('Esse CNPJ já está cadastrado.'); return; }
-    const emp = { id: uid(), nome: f.nome.value.trim(), cnpj };
+    const emp = { id: uid(), nome: f.empresaRazao.value.trim(), cnpj };
     db.config.empresas.push(emp);
     if (db.config.empresas.length === 1) for (const l of db.licitacoes) if (!l.empresaId) l.empresaId = emp.id;
     f.reset();
@@ -986,7 +986,7 @@
   });
   $('#form-add-analista').addEventListener('submit', (e) => {
     e.preventDefault();
-    const nome = e.target.nome.value.trim();
+    const nome = e.target.analistaNome.value.trim();
     if (!nome || db.config.analistas.includes(nome)) return;
     db.config.analistas.push(nome);
     e.target.reset();

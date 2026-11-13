@@ -380,18 +380,18 @@
     <div class="dlg-pad">
       <h2>Empresas e analistas</h2>
       <h3 class="mini">Empresas do grupo</h3>
-      <p class="muted">O CNPJ é usado para buscar no PNCP os contratos e empenhos de cada empresa.</p>
+      <p class="muted">O CNPJ é usado para buscar no PNCP os contratos e empenhos de cada empresa. Se deixar a razão social em branco, ela é preenchida com o nome que consta no PNCP.</p>
       <div id="lista-empresas" class="lista-edit"></div>
-      <form id="form-add-empresa" class="add-row">
-        <input name="nome" placeholder="Nome da empresa" required>
-        <input name="cnpj" placeholder="CNPJ" inputmode="numeric" required>
+      <form id="form-add-empresa" class="add-row" autocomplete="off">
+        <input name="empresaRazao" placeholder="Razão social da empresa" autocomplete="off" data-lpignore="true">
+        <input name="empresaCnpj" placeholder="CNPJ" inputmode="numeric" autocomplete="off" data-lpignore="true" required>
         <button class="btn">Adicionar</button>
       </form>
       <h3 class="mini">Analistas</h3>
       <p class="muted">Quem venceu a licitação ou cuida do contrato.</p>
       <div id="lista-analistas" class="lista-edit"></div>
-      <form id="form-add-analista" class="add-row">
-        <input name="nome" placeholder="Nome do analista" required>
+      <form id="form-add-analista" class="add-row" autocomplete="off">
+        <input name="analistaNome" placeholder="Nome do analista" autocomplete="off" required>
         <button class="btn">Adicionar</button>
       </form>
       <div class="dlg-actions"><span class="spacer"></span><button class="btn primary" data-close>Pronto</button></div>
