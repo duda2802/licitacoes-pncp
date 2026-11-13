@@ -29,3 +29,24 @@ create policy "alterar os proprios dados" on public.licitacoes_dados
 
 revoke all on public.licitacoes_dados from anon;
 grant select, insert, update on public.licitacoes_dados to authenticated;
+
+-- Documentos anexados (notas de empenho, atas, NFs…): bucket privado.
+-- Cada usuário só acessa a própria pasta (o primeiro nível do caminho é o id dele).
+insert into storage.buckets (id, name, public, file_size_limit)
+values ('documentos', 'documentos', false, 26214400)
+on conflict (id) do nothing;
+
+drop policy if exists "documentos: ler os proprios" on storage.objects;
+create policy "documentos: ler os proprios" on storage.objects
+  for select to authenticated
+  using (bucket_id = 'documentos' and (storage.foldername(name))[1] = (select auth.uid())::text);
+
+drop policy if exists "documentos: enviar os proprios" on storage.objects;
+create policy "documentos: enviar os proprios" on storage.objects
+  for insert to authenticated
+  with check (bucket_id = 'documentos' and (storage.foldername(name))[1] = (select auth.uid())::text);
+
+drop policy if exists "documentos: apagar os proprios" on storage.objects;
+create policy "documentos: apagar os proprios" on storage.objects
+  for delete to authenticated
+  using (bucket_id = 'documentos' and (storage.foldername(name))[1] = (select auth.uid())::text);

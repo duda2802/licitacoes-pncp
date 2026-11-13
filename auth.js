@@ -114,11 +114,16 @@
   });
 
   const chaveLocal = () => `${App.STORAGE_KEY}:u:${usuario.id}`;
+  // Usado pelo módulo de documentos (arquivos.js)
+  window.Auth = { sb, usuario: () => usuario };
 
   async function entrar(user) {
     if (usuario?.id === user.id) { html.classList.add('autenticado'); return; }
     usuario = user;
     $('#usuario-email').textContent = user.email;
+    const nome = (user.user_metadata?.nome || user.email.split('@')[0]).replace(/[._-]+/g, ' ');
+    $('#menu-rotulo').textContent = nome.charAt(0).toUpperCase() + nome.slice(1);
+    $('#avatar').textContent = nome.split(' ').filter(Boolean).slice(0, 2).map((p) => p[0].toUpperCase()).join('');
     tela('auth-carregando');
     $('#auth-carregando').textContent = 'Carregando seus dados…';
     try {

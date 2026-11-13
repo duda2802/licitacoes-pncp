@@ -92,6 +92,7 @@
       orgaoCnpj: i.orgao_cnpj,
       objeto: i.description || '',
       fornecedor: soDigitos(i.fornecedor_ni),
+      fornecedorNome: i.fornecedor_nome || '',
       link: i.item_url ? APP_URL + i.item_url : '',
       modalidade: i.modalidade_licitacao_nome,
       cancelado: !!i.cancelado,
@@ -212,7 +213,7 @@
       prazoDias: prazo,
       descricao: c.objeto && c.objeto !== lic.objeto ? c.objeto.slice(0, 160) : '',
       orgao: c.orgao && c.orgao !== lic.orgao ? c.orgao : '',
-      dataEntrega: '', nf: '', dataPagamento: '', obs: '',
+      dataEntrega: '', nf: '', dataNF: '', dataPagamento: '', obs: '', anexos: [],
       pncp: c.id,
       link: c.link,
     };
@@ -227,7 +228,7 @@
 
   /** Cria/atualiza uma licitação a partir de um grupo do PNCP. Retorna {lic, novos}. */
   async function importarGrupo(grupo, opcoes, progresso) {
-    const cnpjs = App.db().config.cnpjs;
+    const cnpjs = cnpjsEmpresas();
     const conhecidos = idsConhecidos();
     const novos = grupo.contratos.filter((c) => !conhecidos.has(c.id));
     const compraId = grupo.key.startsWith('avulso:') ? null : grupo.key;
@@ -238,7 +239,8 @@
     if (!lic) {
       const base = grupo.contratos[0] || {};
       lic = {
-        id: App.uid(), pedidos: [], resultado: 'ganha',
+        id: App.uid(), pedidos: [], anexos: [], resultado: 'ganha', analista: '', situacao: '', etapas: {},
+        empresaId: empresaPorCnpj(base.fornecedor)?.id || '', orgaoCnpj: '', uasg: '', processo: '',
         orgao: base.orgao || '', numero: base.numero || '', modalidade: mapModalidade(base.modalidade),
         objeto: base.objeto || '', dataSessao: '', valor: 0, link: base.link || '',
         instrumento: '', numeroInstrumento: '', vigenciaInicio: '', vigenciaFim: '',
@@ -256,7 +258,9 @@
           lic.objeto = compra.objetoCompra || lic.objeto;
           lic.dataSessao = (compra.dataAberturaProposta || '').slice(0, 10);
           lic.pncp.srp = !!compra.srp;
-          if (compra.processo) lic.obs = `Processo ${compra.processo}`;
+          lic.processo = compra.processo || '';
+          lic.orgaoCnpj = compra.orgaoEntidade?.cnpj || '';
+          lic.uasg = compra.unidadeOrgao?.codigoUnidade || '';
         }
         lic.link = linkCompra(c);
       }
@@ -281,6 +285,11 @@
         lic.vigenciaInicio = ata.dataVigenciaInicio || '';
         lic.vigenciaFim = ata.dataVigenciaFim || '';
         lic.pncp.ata = ataId;
+        // Ata publicada no PNCP: já foi assinada pelas duas partes.
+        const d = ata.dataAssinatura || ata.dataVigenciaInicio || '';
+        let pub = (ata.dataPublicacaoPncp || '').slice(0, 10) || d;
+        if (d && pub < d) pub = d;
+        lic.etapas = { recebido: lic.etapas?.recebido || d, assinadoNos: lic.etapas?.assinadoNos || d, assinadoOrgao: lic.etapas?.assinadoOrgao || d, publicado: lic.etapas?.publicado || pub };
       }
     }
 
@@ -297,9 +306,12 @@
         if (!lic.valor) lic.valor = ct.valor;
         lic.pncp.contrato = ct.id;
         if (!lic.link) lic.link = ct.link;
+        const d = ct.assinatura || ct.vigIni || '';
+        lic.etapas = { recebido: d, assinadoNos: d, assinadoOrgao: d, publicado: d, ...Object.fromEntries(Object.entries(lic.etapas || {}).filter(([, v]) => v)) };
       }
     }
     if (!lic.instrumento) lic.instrumento = 'empenho';
+    if (!lic.empresaId) lic.empresaId = empresaPorCnpj(grupo.contratos[0]?.fornecedor)?.id || (App.db().config.empresas.length === 1 ? App.db().config.empresas[0].id : '');
 
     // Itens ganhos (define o valor ganho em atas)
     if (opcoes.itens && c && !lic.itens) {
@@ -345,14 +357,15 @@
     cancelado = false;
   };
 
-  function lerCnpjs() {
-    const lista = $('#pncp-cnpjs').value.split(/[\s,;]+/).map(soDigitos).filter(Boolean);
-    const invalidos = lista.filter((c) => c.length !== 14);
-    if (invalidos.length) { status(`CNPJ inválido: ${invalidos.join(', ')} (precisa ter 14 dígitos).`, 'erro'); return null; }
-    const unicos = [...new Set(lista)];
-    App.db().config.cnpjs = unicos;
-    App.salvar(false);
-    return unicos;
+  const cnpjsEmpresas = () => App.db().config.empresas.map((e) => e.cnpj).filter((c) => c && c.length === 14);
+  const empresaPorCnpj = (c) => App.db().config.empresas.find((e) => e.cnpj === c);
+  function lerCnpjs() { return cnpjsEmpresas(); }
+  function renderEmpresasPncp() {
+    const emp = App.db().config.empresas;
+    $('#pncp-empresas').innerHTML = emp.length
+      ? `<div class="muted small">Empresas que serão buscadas:</div><div class="tags">${emp.map((e) => `<span class="tag">${esc(e.nome || 'Sem nome')} <span class="mono">${App.fmtCnpj(e.cnpj)}</span></span>`).join('')}</div>
+         <button type="button" class="link" data-editar-empresas>Editar empresas</button>`
+      : `<p class="pncp-aviso">Cadastre o CNPJ das empresas do grupo para buscar no PNCP. <button type="button" class="btn small primary" data-editar-empresas>Cadastrar empresas</button></p>`;
   }
 
   function lerOpcoes() {
@@ -363,7 +376,7 @@
 
   function preencherConfig() {
     const cfg = App.db().config;
-    $('#pncp-cnpjs').value = (cfg.cnpjs || []).map(App.fmtCnpj).join('\n');
+    renderEmpresasPncp();
     if (!$('#pncp-desde').value) {
       const d = App.hoje();
       d.setMonth(d.getMonth() - 18);
@@ -382,7 +395,7 @@
   async function buscar() {
     const cnpjs = lerCnpjs();
     if (!cnpjs) return;
-    if (!cnpjs.length) { status('Informe pelo menos um CNPJ da empresa.', 'erro'); return; }
+    if (!cnpjs.length) { status('Cadastre pelo menos uma empresa com CNPJ (botão “Empresas e analistas”).', 'erro'); return; }
     const desde = $('#pncp-desde').value || '2000-01-01';
     ocupado(true);
     grupos = [];
@@ -390,6 +403,10 @@
     try {
       const todos = [];
       for (const cnpj of cnpjs) todos.push(...await buscarContratosFornecedor(cnpj, desde, (m) => status(m)));
+      // Completa o nome das empresas cadastradas só com CNPJ
+      for (const emp of App.db().config.empresas) {
+        if (!emp.nome) emp.nome = todos.find((c) => c.fornecedor === emp.cnpj && c.fornecedorNome)?.fornecedorNome || '';
+      }
       const mapa = new Map();
       for (const ct of todos) {
         const key = ct.compra || 'avulso:' + ct.id;
@@ -512,7 +529,7 @@
         status('Cole um link do PNCP de edital (…/app/editais/…), ata (…/app/atas/…) ou contrato (…/app/contratos/…).', 'erro');
         return;
       }
-      if (!cnpjs.length && $('#pncp-itens').checked) status('Dica: informe seu CNPJ para o site identificar os itens que você ganhou.');
+      if (!cnpjs.length && $('#pncp-itens').checked) status('Dica: cadastre o CNPJ das empresas para o site identificar os itens ganhos.');
       const r = await importarGrupo(grupo, { ...lerOpcoes(), itens: $('#pncp-itens').checked && cnpjs.length > 0 }, (msg) => status('Importando: ' + msg));
       App.salvar();
       $('#pncp-link').value = '';
@@ -527,7 +544,7 @@
 
   /** Atualiza uma licitação já importada (novos empenhos). Usado no detalhe. */
   async function atualizarLicitacao(lic) {
-    const cnpjs = App.db().config.cnpjs || [];
+    const cnpjs = cnpjsEmpresas();
     if (!lic.pncp?.compra || !cnpjs.length) return;
     App.toast('Buscando novidades no PNCP…');
     try {
@@ -549,7 +566,7 @@
   $('#pncp-link-btn').addEventListener('click', importarLink);
   $('#pncp-link').addEventListener('keydown', (e) => { if (e.key === 'Enter') importarLink(); });
   $('#pncp-cancelar').addEventListener('click', () => { cancelado = true; });
-  $('#pncp-cnpjs').addEventListener('change', lerCnpjs);
+  document.addEventListener('click', (e) => { if (e.target.closest('[data-editar-empresas]')) $('#btn-empresas').click(); });
   $('#pncp-tabela').addEventListener('change', (e) => {
     const cb = e.target.closest('input[data-i]');
     if (cb) { grupos[cb.dataset.i].sel = cb.checked; atualizarBotaoImportar(); }
