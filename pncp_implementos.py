@@ -381,6 +381,7 @@ ANTES_DE_DESTINO = {"chassi", "chassis", "sobrechassi", "modelo", "modelos", "ma
                     "implementos", "transporte", "remocao", "reboque", "guincho",
                     "guinchamento", "resgate", "socorro", "acesso", "elevador", "elevadores", "recolhimento", "abastecimento",
                     "lavagem", "rocadeira", "rocadeiras", "grade", "arado", "potencia"}
+COMPOSTO = {"composta", "composto", "compostas", "compostos", "formada", "formado", "constituida", "constituido"}
 IMPLEMENTO_SEM_PREPOSICAO = {"carroceria", "carrocerias", "cacamba", "cacambas", "bau", "baus",
                              "implemento", "implementos", "cabine", "chassi", "chassis", "engate", "engates"}
 # "... com caminhão" só é destino depois destas ("compatível com trator")
@@ -438,6 +439,9 @@ def inclui_caminhao(texto):
         antes = [p for p in t[:m.start()].split() if p not in ARTIGOS]
         anterior = antes[-1] if antes else ""
         antes_anterior = antes[-2] if len(antes) > 1 else ""
+        # "composta por caminhão cavalo mecânico e semirreboque": compra o caminhão
+        if anterior == "por" and antes_anterior in COMPOSTO:
+            return True
         if anterior in DESTINO:
             continue
         if anterior == "de" and antes_anterior in ANTES_DE_DESTINO:
@@ -669,7 +673,7 @@ RE_ITEM_FORA = re.compile(
 RE_ITEM_FORA_NOME = re.compile(
     r"\b(?:caixas?|hipoclorito|agua sanitaria|desinfetante|pimenta|livros?|balancas?"
     r"|domestico|garfos?|plugues?|defensivos?|spray|marmibox|torneiras?|sacos?|big bag|aspirador\w*|mangueiras?|radio|lonas?|tecido|boias?|limpa ?baus?|ativado concentrado|esfregao|resfriador\w*)\b"
-    r"|^\W*reservatorios?\b|^\W*agua\b|^\W*(?:gasolina|etanol|oleo diesel|diesel s\d+|arla)\b|^\W*tanques? (?:em |de )?aco inox|^\W*tanques? capacidade \d{1,2}\b(?! \d{3})|\btanques? (?:\w+ ){0,4}polietileno")
+    r"|^\W*reservatorios?\b|^\W*(?:escavadeira|retroescavadeira|motoniveladora|rolo compactador|pa carregadeira|carregadeira|trator de esteira|minicarregadeira)\b|^\W*agua\b|^\W*(?:gasolina|etanol|oleo diesel|diesel s\d+|arla)\b|^\W*tanques? (?:em |de )?aco inox|^\W*tanques? capacidade \d{1,2}\b(?! \d{3})|\btanques? (?:\w+ ){0,4}polietileno")
 # volume em ml: utensílio ("passadeira a vapor com tanque de água de 240 ml")
 RE_ITEM_ML = re.compile(r"\b\d+ ?ml\b")
 # recipiente pequeno ("container plástico com alça 20 litros"), nas primeiras palavras
@@ -715,6 +719,10 @@ PALAVRAS_INICIO_ITEM = 15
 # Exceção: carreta/reboque/tanque agrícola acima deste valor unitário entra.
 VALOR_MINIMO_CARRETA_AGRICOLA = 100_000
 RE_CARRETA = re.compile(r"\b(?:carret|reboque|semirreboque|tanque)\w*")
+# reboque feito para levar outra coisa pela estrada (barco, máquina, moto)
+RE_REBOQUE_DE_TRANSPORTE = re.compile(
+    r"\W*(?:carretas?|carretinhas?|reboques?)\b(?: \w+){0,4} (?:transporte|para|p) "
+    r"(?:\w+ ){0,3}(?:embarcac|lancha|barco|bote|jet|moto|retroescavadeira|maquina|veiculo|equipamento)")
 
 
 def valor_unitario(item):
@@ -732,6 +740,13 @@ def item_agricola(item, objeto):
     Carreta/reboque/tanque agrícola acima de VALOR_MINIMO_CARRETA_AGRICOLA não
     conta como agrícola (entra no resultado)."""
     desc = RE_AGRICOLA_NEUTRO.sub(" ", normalizar(item.get("descricao")))
+    obj = normalizar(objeto)
+    so_nome = len(desc.split()) <= 4 and RE_CARRETA.match(desc.replace("carretinha", "carreta"))
+    if (RE_REBOQUE_DE_TRANSPORTE.match(desc) or (so_nome and RE_REBOQUE_DE_TRANSPORTE.search(obj))) \
+            and not re.search(r"\bagricol", desc + " " + obj):
+        # "carreta transporte embarcação", "carretinha/reboque para mini retroescavadeira":
+        # reboque rodoviário, não implemento agrícola nem item náutico
+        return False
     if RE_FORA_DO_ESCOPO.search(desc) or RE_OBJETO_FORA_DO_ESCOPO.search(normalizar(objeto)):
         return True
     agricola = bool(RE_AGRICOLA.search(desc)) or (

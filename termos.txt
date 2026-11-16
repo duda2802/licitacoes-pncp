@@ -133,6 +133,13 @@ prancha rebaixada
 prancha hidráulica
 trailer reboque
 carreta reboque
+carreta rodoviária
+reboque rodoviário
+carretinha reboque
+carreta para transporte de embarcação
+carreta transporte embarcação
+reboque para transporte de máquinas
+reboque para transporte de retroescavadeira
 carroceria plataforma
 asa delta
 
