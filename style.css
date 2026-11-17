@@ -454,3 +454,6 @@ html:not(.somente-leitura) .so-leitor { display: none !important; }
 .novo-usuario { border-top: 1px solid var(--border); padding-top: 1rem; }
 .sec > form.form-grid { margin: 1rem 1.1rem; }
 .perfis-ajuda { margin: 0 1.1rem 1rem !important; }
+
+.bloco-titulo { font-size: 1rem; font-weight: 800; margin: .4rem 0 .6rem; display: flex; gap: .6rem; align-items: baseline; }
+.bloco-titulo .muted { font-size: .8rem; font-weight: 600; }

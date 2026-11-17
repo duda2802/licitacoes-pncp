@@ -171,6 +171,10 @@
     return { etapa: 'entregar', rotulo: `Entregar até ${fmtData(venc)}`, classe: 'info', venc };
   }
 
+  // Faturamento: empenho com nota fiscal emitida (ou já pago). Data = emissão da NF.
+  const faturado = (p) => !!(p.nf || p.dataNF || p.dataPagamento);
+  const dataFaturamento = (p) => p.dataNF || p.dataEntrega || p.dataPagamento || p.dataRecebimento || '';
+  const totalFaturado = (l) => (l.pedidos || []).filter(faturado).reduce((s, p) => s + (Number(p.valor) || 0), 0);
   const totalPedidos = (l) => (l.pedidos || []).reduce((s, p) => s + (Number(p.valor) || 0), 0);
   const saldo = (l) => (Number(l.valor) || 0) - totalPedidos(l);
   const precisaAssinatura = (l) => l.instrumento !== 'empenho';
@@ -332,6 +336,23 @@
       kpi('Pedidos a entregar', aEntregar.length, `${aEntregar.filter((x) => x.s.atraso).length} atrasados`, aEntregar.some((x) => x.s.atraso) ? 'kpi-danger' : ''),
       kpi('A receber', fmtMoeda(aReceber.reduce((s, x) => s + (Number(x.p.valor) || 0), 0)), `${plural(aReceber.length, 'pedido')} entregues`),
       kpi('Recebido', fmtMoeda(recebido), 'pagamentos confirmados'),
+    ].join('');
+
+    // Faturamento
+    const fat = peds.filter((x) => faturado(x.p));
+    const soma = (arr) => arr.reduce((s, x) => s + (Number(x.p.valor) || 0), 0);
+    const hojeStr = hojeISO();
+    const mes = hojeStr.slice(0, 7);
+    const ano = hojeStr.slice(0, 4);
+    const fatMes = fat.filter((x) => dataFaturamento(x.p).startsWith(mes));
+    const fatAno = fat.filter((x) => dataFaturamento(x.p).startsWith(ano));
+    const aFaturar = peds.filter((x) => !faturado(x.p));
+    const nomeMes = hoje().toLocaleDateString('pt-BR', { month: 'long' });
+    $('#kpis-fat').innerHTML = [
+      kpi(`Faturado em ${nomeMes}`, fmtMoeda(soma(fatMes)), plural(fatMes.length, 'nota fiscal', 'notas fiscais')),
+      kpi(`Faturado em ${ano}`, fmtMoeda(soma(fatAno)), plural(fatAno.length, 'nota fiscal', 'notas fiscais')),
+      kpi('Faturamento total', fmtMoeda(soma(fat)), `${plural(fat.length, 'empenho faturado', 'empenhos faturados')}`),
+      kpi('A faturar', fmtMoeda(soma(aFaturar)), `${plural(aFaturar.length, 'empenho')} ainda sem NF`, aFaturar.some((x) => x.p.dataEntrega) ? 'kpi-warn' : ''),
     ].join('');
 
     const itens = [];
@@ -643,6 +664,7 @@
         <div><div class="k">Analista</div><div class="v">${esc(r.analista) || '—'}</div></div>
         ${ganha ? `<div><div class="k">Valor total</div><div class="v mono">${fmtMoeda(r.valor)}</div></div>
         <div><div class="k">Empenhado</div><div class="v mono">${fmtMoeda(totalPedidos(r))}</div></div>
+        <div><div class="k">Faturado</div><div class="v mono">${fmtMoeda(totalFaturado(r))}</div></div>
         <div><div class="k">Saldo</div><div class="v mono">${fmtMoeda(saldo(r))}</div></div>` : ''}
       </div>
       ${ganha ? `<ol class="passos">${passos.map(([k, rot, v]) => `
@@ -1052,11 +1074,11 @@
   function linhasExport(tipo) {
     if (tipo === 'contratos') {
       const cab = ['Empresa', 'Tipo', 'Nº contrato/ata', 'Órgão', 'CNPJ do órgão', 'Licitação', 'Processo', 'Objeto', 'Analista', 'Status',
-        'Ação pendente', 'Assinado por nós', 'Assinado pelo órgão', 'Publicado', 'Vigência início', 'Vigência fim', 'Valor total', 'Empenhado', 'Saldo'];
+        'Ação pendente', 'Assinado por nós', 'Assinado pelo órgão', 'Publicado', 'Vigência início', 'Vigência fim', 'Valor total', 'Empenhado', 'Faturado', 'Saldo'];
       return [cab, ...listaContratos().map(({ l, s }) => [nomeEmpresa(empresaDe(l)), INSTRUMENTO[l.instrumento] || '', l.numeroInstrumento, l.orgao,
         fmtCnpj(l.orgaoCnpj), l.numero, l.processo, l.objeto, l.analista, s.rotulo, s.acoes.map((a) => a.texto).join('; '),
         fmtData(l.etapas?.assinadoNos), fmtData(l.etapas?.assinadoOrgao), fmtData(l.etapas?.publicado),
-        fmtData(l.vigenciaInicio), fmtData(l.vigenciaFim), numBR(l.valor), numBR(totalPedidos(l)), numBR(saldo(l))])];
+        fmtData(l.vigenciaInicio), fmtData(l.vigenciaFim), numBR(l.valor), numBR(totalPedidos(l)), numBR(totalFaturado(l)), numBR(saldo(l))])];
     }
     const cab = ['Empresa', 'Empenho/OF', 'Órgão', 'Contrato/ata', 'Licitação', 'Recebido', 'Entregar até', 'Entregue', 'NF', 'NF emitida', 'Pago', 'Valor', 'Status'];
     return [cab, ...listaPedidos().map(({ l, p, s }) => [nomeEmpresa(empresaDe(l)), p.numero, p.orgao || l.orgao, docNumero(l), l.numero,
