@@ -171,6 +171,8 @@
     return { etapa: 'entregar', rotulo: `Entregar até ${fmtData(venc)}`, classe: 'info', venc };
   }
 
+  // Vendas: valor dos contratos/atas ganhos. Data da venda = assinatura (ou sessão, se o contrato ainda não chegou).
+  const dataVenda = (l) => l.etapas?.assinadoNos || l.etapas?.assinadoOrgao || l.etapas?.recebido || l.vigenciaInicio || l.dataSessao || '';
   const totalPedidos = (l) => (l.pedidos || []).reduce((s, p) => s + (Number(p.valor) || 0), 0);
   const saldo = (l) => (Number(l.valor) || 0) - totalPedidos(l);
   const precisaAssinatura = (l) => l.instrumento !== 'empenho';
@@ -189,7 +191,12 @@
     if (l.situacao === 'rescindido') st = { chave: 'rescindido', rotulo: 'Rescindido / cancelado', classe: 'danger' };
     else if (l.situacao === 'suspenso') st = { chave: 'suspenso', rotulo: 'Suspenso', classe: 'warn' };
     else if (l.vigenciaFim && diasAte(l.vigenciaFim) < 0) st = { chave: 'encerrado', rotulo: 'Encerrado', classe: '' };
-    else if (precisaAssinatura(l) && !e.assinadoNos) {
+    else if (precisaAssinatura(l) && !e.recebido && !e.assinadoNos) {
+      // Ganhou, mas o órgão ainda não mandou o contrato/ata para assinar
+      st = { chave: 'aguardando_contrato', rotulo: 'Aguardando o contrato', classe: 'info' };
+      const ref = l.dataHomologacao || l.dataSessao;
+      if (ref && diasAte(ref) < -30) acoes.push({ texto: 'Cobrar do órgão o envio do contrato/ata', nivel: 'warn' });
+    } else if (precisaAssinatura(l) && !e.assinadoNos) {
       st = { chave: 'aguardando_assinatura', rotulo: 'Aguardando assinatura', classe: 'warn' };
       acoes.push({ texto: 'Assinar e devolver ao órgão', nivel: e.recebido && diasAte(e.recebido) < -5 ? 'danger' : 'warn' });
     } else if (precisaAssinatura(l) && !e.assinadoOrgao) {
@@ -329,6 +336,22 @@
       kpi('Recebido', fmtMoeda(recebido), 'pagamentos confirmados'),
     ].join('');
 
+    // Vendas (contratos/atas ganhos, menos os rescindidos)
+    const vendas = lics.filter((l) => l.resultado === 'ganha' && l.situacao !== 'rescindido');
+    const somaV = (arr) => arr.reduce((s, l) => s + (Number(l.valor) || 0), 0);
+    const mes = hojeISO().slice(0, 7);
+    const ano = hojeISO().slice(0, 4);
+    const vMes = vendas.filter((l) => dataVenda(l).startsWith(mes));
+    const vAno = vendas.filter((l) => dataVenda(l).startsWith(ano));
+    const nomeMes = hoje().toLocaleDateString('pt-BR', { month: 'long' });
+    const medio = vAno.length ? somaV(vAno) / vAno.length : 0;
+    $('#kpis-fat').innerHTML = [
+      kpi(`Vendido em ${nomeMes}`, fmtMoeda(somaV(vMes)), plural(vMes.length, 'contrato/ata', 'contratos/atas')),
+      kpi(`Vendido em ${ano}`, fmtMoeda(somaV(vAno)), plural(vAno.length, 'contrato/ata', 'contratos/atas')),
+      kpi('Total vendido', fmtMoeda(somaV(vendas)), plural(vendas.length, 'contrato/ata', 'contratos/atas')),
+      kpi(`Ticket médio ${ano}`, fmtMoeda(medio), 'valor médio por contrato/ata'),
+    ].join('');
+
     const itens = [];
     for (const l of lics) {
       const st = statusContrato(l);
@@ -356,6 +379,7 @@
   const PILLS_C = [
     ['andamento', 'Em andamento', (s) => emAndamento(s)],
     ['acao', 'Ação nossa pendente', (s) => s.acoes.length > 0],
+    ['contrato', 'Aguardando contrato', (s) => s.chave === 'aguardando_contrato'],
     ['assinatura', 'Aguardando assinatura', (s) => s.chave === 'aguardando_assinatura' || s.chave === 'aguardando_orgao'],
     ['assinado', 'Assinado', (s) => s.chave === 'assinado'],
     ['vigente', 'Vigente', (s) => s.chave === 'vigente'],
@@ -579,7 +603,7 @@
     formC.reset();
     const base = lic || {
       resultado: 'ganha', instrumento: 'ata', modalidade: 'Pregão eletrônico',
-      empresaId: ui.empresa || db.config.empresas[0]?.id || '', etapas: { recebido: hojeISO() },
+      empresaId: ui.empresa || db.config.empresas[0]?.id || '', etapas: {},
     };
     escreverForm(formC, base);
     travarCampos(formC);
