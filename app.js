@@ -174,7 +174,9 @@
   // Vendas: valor dos contratos/atas ganhos. Data da venda = assinatura (ou sessão, se o contrato ainda não chegou).
   const dataVenda = (l) => l.etapas?.assinadoNos || l.etapas?.assinadoOrgao || l.etapas?.recebido || l.vigenciaInicio || l.dataSessao || '';
   const totalPedidos = (l) => (l.pedidos || []).reduce((s, p) => s + (Number(p.valor) || 0), 0);
-  const saldo = (l) => (Number(l.valor) || 0) - totalPedidos(l);
+  const saldo = (l) => (Number(l.valor) || 0) - totalPedidos(l); // saldo a empenhar (o órgão ainda pode pedir)
+  const totalEntregue = (l) => (l.pedidos || []).filter((p) => p.dataEntrega).reduce((s, p) => s + (Number(p.valor) || 0), 0);
+  const saldoExecutar = (l) => Math.max(0, (Number(l.valor) || 0) - totalEntregue(l)); // ainda falta entregar
   const precisaAssinatura = (l) => l.instrumento !== 'empenho';
 
   /** Status do contrato/ata e lista de ações nossas pendentes. */
@@ -262,7 +264,7 @@
       if (l.vigenciaFim && st.chave !== 'rescindido') {
         const d = diasAte(l.vigenciaFim);
         out.push({
-          licId: l.id, tipo: 'vigencia', data: l.vigenciaFim, orgao: l.orgao, valor: saldo(l),
+          licId: l.id, tipo: 'vigencia', data: l.vigenciaFim, orgao: l.orgao, valor: saldoExecutar(l),
           descricao: `Fim da vigência — ${INSTRUMENTO[l.instrumento] || ''} ${docNumero(l)}`, concluido: d < 0,
           situacao: d < 0 ? { rotulo: 'Encerrada', classe: '' } : { rotulo: `Termina ${textoDias(d)}`, classe: d <= ALERTA_VIGENCIA_DIAS ? 'warn' : 'ok' },
         });
@@ -322,7 +324,8 @@
     const lics = licsDaEmpresa();
     const ativos = lics.filter((l) => emAndamento(statusContrato(l)));
     const peds = todosPedidos(lics);
-    const saldoTotal = ativos.reduce((s, l) => s + Math.max(0, saldo(l)), 0);
+    const saldoTotal = ativos.reduce((s, l) => s + saldoExecutar(l), 0);
+    const semEmpenho = ativos.reduce((s, l) => s + Math.max(0, saldo(l)), 0);
     const aEntregar = peds.filter((x) => x.s.etapa === 'entregar');
     const aReceber = peds.filter((x) => x.s.etapa === 'receber' || x.s.etapa === 'faturar');
     const recebido = peds.filter((x) => x.s.etapa === 'pago').reduce((s, x) => s + (Number(x.p.valor) || 0), 0);
@@ -330,7 +333,7 @@
     $('#kpis-painel').innerHTML = [
       kpi('Contratos e atas em andamento', ativos.length, plural(lics.filter((l) => l.resultado === 'ganha').length, 'licitação ganha', 'licitações ganhas')),
       kpi('Ação nossa pendente', comAcao.length, comAcao.length ? 'contratos/atas precisam de atenção' : 'tudo em dia', comAcao.length ? 'kpi-warn' : ''),
-      kpi('Saldo a executar', fmtMoeda(saldoTotal), 'em contratos/atas ativos'),
+      kpi('Saldo a executar', fmtMoeda(saldoTotal), `ainda a entregar · ${fmtMoeda(semEmpenho)} sem empenho`),
       kpi('Pedidos a entregar', aEntregar.length, `${aEntregar.filter((x) => x.s.atraso).length} atrasados`, aEntregar.some((x) => x.s.atraso) ? 'kpi-danger' : ''),
       kpi('A receber', fmtMoeda(aReceber.reduce((s, x) => s + (Number(x.p.valor) || 0), 0)), `${plural(aReceber.length, 'pedido')} entregues`),
       kpi('Recebido', fmtMoeda(recebido), 'pagamentos confirmados'),
@@ -402,7 +405,7 @@
       urgente: (a, b) => urgencia(b.s) - urgencia(a.s) || (a.l.vigenciaFim || '9999').localeCompare(b.l.vigenciaFim || '9999'),
       vigencia: (a, b) => (a.l.vigenciaFim || '9999').localeCompare(b.l.vigenciaFim || '9999'),
       recente: (a, b) => (b.l.etapas?.recebido || b.l.dataSessao || '').localeCompare(a.l.etapas?.recebido || a.l.dataSessao || ''),
-      saldo: (a, b) => saldo(b.l) - saldo(a.l),
+      saldo: (a, b) => saldoExecutar(b.l) - saldoExecutar(a.l),
       orgao: (a, b) => a.l.orgao.localeCompare(b.l.orgao, 'pt-BR'),
     }[ui.ordemC] || (() => 0);
     return lista.sort(ordem);
@@ -416,11 +419,11 @@
     const vig = sts.filter((x) => x.s.chave === 'vigente');
     const terminando = vig.filter((x) => x.l.vigenciaFim && diasAte(x.l.vigenciaFim) <= ALERTA_VIGENCIA_DIAS);
     const enc = sts.filter((x) => x.s.chave === 'encerrado');
-    const naoExec = enc.reduce((s, x) => s + Math.max(0, saldo(x.l)), 0);
+    const naoExec = enc.reduce((s, x) => s + saldoExecutar(x.l), 0);
     const prox = terminando.map((x) => diasAte(x.l.vigenciaFim)).sort((a, b) => a - b)[0];
     $('#kpis-contratos').innerHTML = [
       kpi('Aguardando assinatura', aguard.length, atrasadas ? `${atrasadas} com prazo passando` : 'Nenhum prazo vencido', atrasadas ? 'kpi-warn' : ''),
-      kpi('Vigentes', vig.length, `${fmtMoeda(vig.reduce((s, x) => s + Math.max(0, saldo(x.l)), 0))} de saldo a executar`),
+      kpi('Vigentes', vig.length, `${fmtMoeda(vig.reduce((s, x) => s + saldoExecutar(x.l), 0))} de saldo a executar`),
       kpi(`Vigência termina em ${ALERTA_VIGENCIA_DIAS} dias`, terminando.length, terminando.length ? `a próxima ${textoDias(prox)}` : 'Nenhum vencimento próximo', terminando.length ? 'kpi-warn' : ''),
       kpi('Vigência encerrada', enc.length, naoExec ? `${fmtMoeda(naoExec)} de saldo não executado` : 'Tudo em dia'),
     ].join('');
@@ -434,7 +437,7 @@
     $('#tabela-contratos tbody').innerHTML = lista.map(({ l, s }) => {
       const ganha = l.resultado === 'ganha';
       const total = Number(l.valor) || 0;
-      const exec = totalPedidos(l);
+      const exec = totalEntregue(l);
       const pct = total ? Math.min(100, Math.round((exec / total) * 100)) : 0;
       const u = urgencia(s);
       return `<tr class="clickable urg-${u}" data-lic="${l.id}">
@@ -444,8 +447,8 @@
           ${variasEmpresas && empresaDe(l) ? `<div class="emp-tag">${esc(nomeEmpresa(empresaDe(l)))}</div>` : ''}</td>
         <td>${l.analista ? esc(l.analista) : ganha ? '<span class="badge warn">Indefinido</span>' : '<span class="muted">—</span>'}</td>
         <td class="mono nowrap">${l.vigenciaInicio || l.vigenciaFim ? `${fmtData(l.vigenciaInicio)} a<br>${fmtData(l.vigenciaFim)}` : '<span class="muted">—</span>'}</td>
-        <td>${ganha && total ? `<div class="mono">${fmtMoeda(saldo(l))}</div><div class="progress"><span style="width:${pct}%"></span></div>
-          <div class="muted small">${pct}% executado de ${fmtMoeda(total)}</div>` : '<span class="muted">—</span>'}</td>
+        <td>${ganha && total ? `<div class="mono">${fmtMoeda(saldoExecutar(l))}</div><div class="progress"><span style="width:${pct}%"></span></div>
+          <div class="muted small">${pct}% entregue de ${fmtMoeda(total)}${totalPedidos(l) ? ` · ${fmtMoeda(totalPedidos(l))} empenhado` : ''}</div>` : '<span class="muted">—</span>'}</td>
         <td><span class="status ${s.classe}">${esc(s.rotulo)}</span>
           ${s.acoes.length ? `<div class="acao ${s.acoes[0].nivel}">⚠ ${esc(s.acoes[0].texto)}${s.acoes.length > 1 ? ` <span class="mais">+${s.acoes.length - 1}</span>` : ''}</div>` : ''}</td>
       </tr>`;
@@ -661,7 +664,9 @@
         <div><div class="k">Analista</div><div class="v">${esc(r.analista) || '—'}</div></div>
         ${ganha ? `<div><div class="k">Valor total</div><div class="v mono">${fmtMoeda(r.valor)}</div></div>
         <div><div class="k">Empenhado</div><div class="v mono">${fmtMoeda(totalPedidos(r))}</div></div>
-        <div><div class="k">Saldo</div><div class="v mono">${fmtMoeda(saldo(r))}</div></div>` : ''}
+        <div><div class="k">Entregue</div><div class="v mono">${fmtMoeda(totalEntregue(r))}</div></div>
+        <div><div class="k">Saldo a executar</div><div class="v mono">${fmtMoeda(saldoExecutar(r))}</div></div>
+        <div><div class="k">Saldo a empenhar</div><div class="v mono">${fmtMoeda(saldo(r))}</div></div>` : ''}
       </div>
       ${ganha ? `<ol class="passos">${passos.map(([k, rot, v]) => `
         <li class="${v ? 'feito' : ''} ${proximo && proximo[0] === k ? 'proximo' : ''}">
@@ -1070,11 +1075,11 @@
   function linhasExport(tipo) {
     if (tipo === 'contratos') {
       const cab = ['Empresa', 'Tipo', 'Nº contrato/ata', 'Órgão', 'CNPJ do órgão', 'Licitação', 'Processo', 'Objeto', 'Analista', 'Status',
-        'Ação pendente', 'Assinado por nós', 'Assinado pelo órgão', 'Publicado', 'Vigência início', 'Vigência fim', 'Valor total', 'Empenhado', 'Saldo'];
+        'Ação pendente', 'Assinado por nós', 'Assinado pelo órgão', 'Publicado', 'Vigência início', 'Vigência fim', 'Valor total', 'Empenhado', 'Entregue', 'Saldo a executar', 'Saldo a empenhar'];
       return [cab, ...listaContratos().map(({ l, s }) => [nomeEmpresa(empresaDe(l)), INSTRUMENTO[l.instrumento] || '', l.numeroInstrumento, l.orgao,
         fmtCnpj(l.orgaoCnpj), l.numero, l.processo, l.objeto, l.analista, s.rotulo, s.acoes.map((a) => a.texto).join('; '),
         fmtData(l.etapas?.assinadoNos), fmtData(l.etapas?.assinadoOrgao), fmtData(l.etapas?.publicado),
-        fmtData(l.vigenciaInicio), fmtData(l.vigenciaFim), numBR(l.valor), numBR(totalPedidos(l)), numBR(saldo(l))])];
+        fmtData(l.vigenciaInicio), fmtData(l.vigenciaFim), numBR(l.valor), numBR(totalPedidos(l)), numBR(totalEntregue(l)), numBR(saldoExecutar(l)), numBR(saldo(l))])];
     }
     const cab = ['Empresa', 'Empenho/OF', 'Órgão', 'Contrato/ata', 'Licitação', 'Recebido', 'Entregar até', 'Entregue', 'NF', 'NF emitida', 'Pago', 'Valor', 'Status'];
     return [cab, ...listaPedidos().map(({ l, p, s }) => [nomeEmpresa(empresaDe(l)), p.numero, p.orgao || l.orgao, docNumero(l), l.numero,
