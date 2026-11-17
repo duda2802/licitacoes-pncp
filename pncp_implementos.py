@@ -171,8 +171,14 @@ RE_SERVICO_COM = re.compile(
     r"(?!aquisic|fornec|compra|entrega)\w+")
 
 
+RE_FORNECE_E_INSTALA = re.compile(r"\bfornecimento e (?:a )?(?:(?:instalac|montag)\w* (?:d[eao]s? )?)?$")
+
+
 def ocorrencia_de_compra(texto_normalizado, inicio):
     """False se o termo que começa em `inicio` é objeto de serviço/peça, não de compra."""
+    # "SERVIÇO DE INSTALAÇÃO ... - Fornecimento e instalação de prancha": fornece o implemento
+    if RE_FORNECE_E_INSTALA.search(texto_normalizado[max(0, inicio - 60):inicio]):
+        return True
     antes = texto_normalizado[:inicio].split()
     sem_artigo = [p for p in antes[-3:] if p not in ARTIGOS]
     # "compatibilidade com elevadores de caminhões coletores": destino
@@ -241,7 +247,7 @@ RE_GATILHO = re.compile(
     r"\b(?:maquinas?|maquinarios?|patrulhas? (?:mecanizad|agricol)|mecanizacao"
     r"|equipamentos? (?:agricola|rodoviari|pesad|para (?:a )?agricultura|urbanos)"
     r"|implementos?|agricultura familiar|veiculos? e equipamentos"
-    r"|equipamentos? e veiculos)\w*")
+    r"|equipamentos? e veiculos|(?:transformacao|adaptacao|alongamento) (?:de |do |dos )?caminh)\w*")
 RE_COMPRA_OBJETO = re.compile(r"\b(?:aquisic|compra|fornecimento|registro de preco)")
 
 
@@ -639,6 +645,9 @@ def item_de_servico(item):
     com locação, manutenção, peça etc. ("14507-Locação de equipamento ...")."""
     if item.get("materialOuServico") == "S":
         return True
+    # "SERVIÇO DE INSTALAÇÃO ... - Fornecimento e instalação de prancha ...": fornece o implemento
+    if re.search(r"\bfornecimento e (?:a )?instalac\w* d[eao]s? ", normalizar(item.get("descricao"))):
+        return False
     # nome de atributo do catálogo não conta: "Caminhão Carga potência motor: 130,
     # combustível: diesel" é o caminhão, não compra de combustível
     texto = RE_ATRIBUTO.sub(" ", item.get("descricao") or "")

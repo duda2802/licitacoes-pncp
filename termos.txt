@@ -131,6 +131,9 @@ prancha móvel
 prancha baixa
 prancha rebaixada
 prancha hidráulica
+instalação de prancha
+prancha com rampas
+quarto eixo
 trailer reboque
 carreta reboque
 carreta rodoviária
