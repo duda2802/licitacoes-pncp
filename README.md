@@ -58,3 +58,8 @@ Depois disso, os demais usuários são criados pelo site, em **Usuários e senha
 
 A URL e a chave pública podem ficar no código: quem protege os dados são as regras (RLS) do `schema.sql` e a
 verificação de administrador na função `usuarios`, que é a única que usa a chave secreta (no servidor do Supabase).
+
+## Atualizações e cache do navegador
+
+Os arquivos são carregados com `?v=...` no `index.html`. A cada mudança no CSS/JS, troque esse número
+(ex.: `?v=20261117a` → `?v=20261120a`) para os navegadores baixarem a versão nova em vez da guardada.
