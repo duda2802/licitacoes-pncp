@@ -247,7 +247,7 @@ RE_GATILHO = re.compile(
     r"\b(?:maquinas?|maquinarios?|patrulhas? (?:mecanizad|agricol)|mecanizacao"
     r"|equipamentos? (?:agricola|rodoviari|pesad|para (?:a )?agricultura|urbanos)"
     r"|implementos?|agricultura familiar|veiculos? e equipamentos"
-    r"|equipamentos? e veiculos|(?:transformacao|adaptacao|alongamento) (?:de |do |dos )?caminh)\w*")
+    r"|equipamentos? e veiculos|(?:transformacao|adaptacao|alongamento) (?:de |do |dos )?caminh|carretas?|reboques?)\w*")
 RE_COMPRA_OBJETO = re.compile(r"\b(?:aquisic|compra|fornecimento|registro de preco)")
 
 
