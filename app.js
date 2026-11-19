@@ -177,6 +177,18 @@
   const saldo = (l) => (Number(l.valor) || 0) - totalPedidos(l); // saldo a empenhar (o órgão ainda pode pedir)
   const totalEntregue = (l) => (l.pedidos || []).filter((p) => p.dataEntrega).reduce((s, p) => s + (Number(p.valor) || 0), 0);
   const saldoExecutar = (l) => Math.max(0, (Number(l.valor) || 0) - totalEntregue(l)); // ainda falta entregar
+
+  /** Situação das entregas do contrato (o prazo que importa no dia a dia; a vigência inclui a garantia). */
+  function infoEntrega(l) {
+    const peds = l.pedidos || [];
+    const pendentes = peds.filter((p) => !p.dataEntrega);
+    const prazos = pendentes.map((p) => vencimentoEntrega(l, p)).filter(Boolean).sort();
+    const ultimaEntrega = peds.map((p) => p.dataEntrega).filter(Boolean).sort().pop() || '';
+    if (prazos.length) return { tipo: 'pendente', data: prazos[0], qtd: pendentes.length };
+    if (pendentes.length) return { tipo: 'semprazo', qtd: pendentes.length };
+    if (peds.length) return { tipo: saldoExecutar(l) <= 0 ? 'entregue' : 'parcial', data: ultimaEntrega };
+    return { tipo: 'sem_empenho' };
+  }
   const precisaAssinatura = (l) => l.instrumento !== 'empenho';
 
   /** Status do contrato/ata e lista de ações nossas pendentes. */
@@ -212,9 +224,18 @@
     if (ativo && !l.analista) acoes.push({ texto: 'Definir o analista responsável', nivel: 'warn' });
     if (st.chave === 'vigente' && l.vigenciaFim) {
       const d = diasAte(l.vigenciaFim);
-      if (d <= ALERTA_VIGENCIA_DIAS) acoes.push({ texto: `Vigência termina ${textoDias(d)} — avaliar aditivo`, nivel: d <= 30 ? 'danger' : 'warn' });
+      if (l.instrumento === 'ata') {
+        // Ata de registro de preços: a vigência define até quando o órgão pode fazer pedidos
+        if (d <= ALERTA_VIGENCIA_DIAS) acoes.push({ texto: `Vigência da ata termina ${textoDias(d)} — avaliar aditivo`, nivel: d <= 30 ? 'danger' : 'warn' });
+      } else if (saldoExecutar(l) > 0) {
+        // Contrato: só preocupa se a vigência acabar antes de terminarmos de entregar
+        const ent = infoEntrega(l);
+        if ((ent.tipo === 'pendente' && l.vigenciaFim < ent.data) || d <= 30) {
+          acoes.push({ texto: `Vigência termina ${textoDias(d)}, antes da entrega — pedir prorrogação`, nivel: 'danger' });
+        }
+      }
     }
-    if (st.chave === 'vigente' && !l.vigenciaFim && precisaAssinatura(l)) acoes.push({ texto: 'Informar a vigência', nivel: 'warn' });
+    if (st.chave === 'vigente' && !l.vigenciaFim && l.instrumento === 'ata') acoes.push({ texto: 'Informar a vigência da ata', nivel: 'warn' });
     let atrasadas = 0, faturar = 0, cobrar = 0;
     for (const p of l.pedidos) {
       const s = situacaoPedido(l, p);
@@ -261,11 +282,11 @@
           });
         }
       }
-      if (l.vigenciaFim && st.chave !== 'rescindido') {
+      if (l.vigenciaFim && l.instrumento === 'ata' && st.chave !== 'rescindido') {
         const d = diasAte(l.vigenciaFim);
         out.push({
           licId: l.id, tipo: 'vigencia', data: l.vigenciaFim, orgao: l.orgao, valor: saldoExecutar(l),
-          descricao: `Fim da vigência — ${INSTRUMENTO[l.instrumento] || ''} ${docNumero(l)}`, concluido: d < 0,
+          descricao: `Fim da vigência da ata ${docNumero(l)}`, concluido: d < 0,
           situacao: d < 0 ? { rotulo: 'Encerrada', classe: '' } : { rotulo: `Termina ${textoDias(d)}`, classe: d <= ALERTA_VIGENCIA_DIAS ? 'warn' : 'ok' },
         });
       }
@@ -394,6 +415,7 @@
     ['todos', 'Todos', () => true],
   ];
 
+  const prazoEnt = (l) => { const e = infoEntrega(l); return e.tipo === 'pendente' ? e.data : '9999'; };
   function listaContratos() {
     const busca = $('#busca-contratos').value.trim().toLowerCase();
     const pill = PILLS_C.find((p) => p[0] === ui.pillC) || PILLS_C[0];
@@ -402,8 +424,8 @@
       .filter(({ l }) => !busca || [l.orgao, l.numero, l.numeroInstrumento, l.objeto, l.processo, l.analista, nomeEmpresa(empresaDe(l)),
         ...(l.itens || []).map((i) => i.descricao)].join(' ').toLowerCase().includes(busca));
     const ordem = {
-      urgente: (a, b) => urgencia(b.s) - urgencia(a.s) || (a.l.vigenciaFim || '9999').localeCompare(b.l.vigenciaFim || '9999'),
-      vigencia: (a, b) => (a.l.vigenciaFim || '9999').localeCompare(b.l.vigenciaFim || '9999'),
+      urgente: (a, b) => urgencia(b.s) - urgencia(a.s) || prazoEnt(a.l).localeCompare(prazoEnt(b.l)),
+      vigencia: (a, b) => prazoEnt(a.l).localeCompare(prazoEnt(b.l)),
       recente: (a, b) => (b.l.etapas?.recebido || b.l.dataSessao || '').localeCompare(a.l.etapas?.recebido || a.l.dataSessao || ''),
       saldo: (a, b) => saldoExecutar(b.l) - saldoExecutar(a.l),
       orgao: (a, b) => a.l.orgao.localeCompare(b.l.orgao, 'pt-BR'),
@@ -417,14 +439,15 @@
     const aguard = sts.filter((x) => x.s.chave === 'aguardando_assinatura' || x.s.chave === 'aguardando_orgao');
     const atrasadas = aguard.filter((x) => x.s.acoes.some((a) => a.nivel === 'danger' || /Cobrar/.test(a.texto))).length;
     const vig = sts.filter((x) => x.s.chave === 'vigente');
-    const terminando = vig.filter((x) => x.l.vigenciaFim && diasAte(x.l.vigenciaFim) <= ALERTA_VIGENCIA_DIAS);
+    const entregas = todosPedidos(lics).filter((x) => x.s.etapa === 'entregar');
+    const proxEntrega = entregas.map((x) => x.s.venc).filter(Boolean).sort()[0];
     const enc = sts.filter((x) => x.s.chave === 'encerrado');
     const naoExec = enc.reduce((s, x) => s + saldoExecutar(x.l), 0);
-    const prox = terminando.map((x) => diasAte(x.l.vigenciaFim)).sort((a, b) => a - b)[0];
     $('#kpis-contratos').innerHTML = [
       kpi('Aguardando assinatura', aguard.length, atrasadas ? `${atrasadas} com prazo passando` : 'Nenhum prazo vencido', atrasadas ? 'kpi-warn' : ''),
       kpi('Vigentes', vig.length, `${fmtMoeda(vig.reduce((s, x) => s + saldoExecutar(x.l), 0))} de saldo a executar`),
-      kpi(`Vigência termina em ${ALERTA_VIGENCIA_DIAS} dias`, terminando.length, terminando.length ? `a próxima ${textoDias(prox)}` : 'Nenhum vencimento próximo', terminando.length ? 'kpi-warn' : ''),
+      kpi('Entregas a fazer', entregas.length, proxEntrega ? `a próxima ${textoDias(diasAte(proxEntrega))} (${fmtData(proxEntrega)})` : 'Nenhuma entrega pendente',
+        entregas.some((x) => x.s.atraso) ? 'kpi-danger' : entregas.some((x) => x.s.classe === 'warn') ? 'kpi-warn' : ''),
       kpi('Vigência encerrada', enc.length, naoExec ? `${fmtMoeda(naoExec)} de saldo não executado` : 'Tudo em dia'),
     ].join('');
 
@@ -446,7 +469,7 @@
           <div class="muted clamp1">${esc(l.numero)}${l.objeto ? ' — ' + esc(l.objeto) : ''}</div>
           ${variasEmpresas && empresaDe(l) ? `<div class="emp-tag">${esc(nomeEmpresa(empresaDe(l)))}</div>` : ''}</td>
         <td>${l.analista ? esc(l.analista) : ganha ? '<span class="badge warn">Indefinido</span>' : '<span class="muted">—</span>'}</td>
-        <td class="mono nowrap">${l.vigenciaInicio || l.vigenciaFim ? `${fmtData(l.vigenciaInicio)} a<br>${fmtData(l.vigenciaFim)}` : '<span class="muted">—</span>'}</td>
+        <td class="nowrap">${ganha ? celulaEntrega(l) : '<span class="muted">—</span>'}</td>
         <td>${ganha && total ? `<div class="mono">${fmtMoeda(saldoExecutar(l))}</div><div class="progress"><span style="width:${pct}%"></span></div>
           <div class="muted small">${pct}% entregue de ${fmtMoeda(total)}${totalPedidos(l) ? ` · ${fmtMoeda(totalPedidos(l))} empenhado` : ''}</div>` : '<span class="muted">—</span>'}</td>
         <td><span class="status ${s.classe}">${esc(s.rotulo)}</span>
@@ -592,6 +615,29 @@
     }
   }
 
+
+  /** Etapa "Entrega" do contrato: [chave, rótulo, data feita, texto quando pendente] */
+  function passoEntrega(l) {
+    const ent = infoEntrega(l);
+    if (ent.tipo === 'entregue') return ['entrega', 'Entregue', ent.data];
+    if (ent.tipo === 'pendente') return ['entrega', 'Entrega', '', `até ${fmtData(ent.data)}`];
+    if (ent.tipo === 'parcial') return ['entrega', 'Entrega', '', 'parcial'];
+    return ['entrega', 'Entrega', '', l.prazoEntregaDias ? `${l.prazoEntregaDias} dias do empenho` : '—'];
+  }
+  function celulaEntrega(l) {
+    const ent = infoEntrega(l);
+    let html;
+    if (ent.tipo === 'pendente') {
+      const d = diasAte(ent.data);
+      const cls = d < 0 ? 'txt-danger' : d <= 7 ? 'txt-warn' : '';
+      html = `<div class="mono"><strong>até ${fmtData(ent.data)}</strong></div><div class="small ${cls}">${d < 0 ? `atrasada ${-d} dias` : textoDias(d)}${ent.qtd > 1 ? ` · ${ent.qtd} entregas` : ''}</div>`;
+    } else if (ent.tipo === 'entregue') html = `<div class="txt-ok"><strong>Entregue</strong></div><div class="small mono">${fmtData(ent.data)}</div>`;
+    else if (ent.tipo === 'parcial') html = `<div><strong>Entrega parcial</strong></div><div class="small muted">aguardando novo empenho</div>`;
+    else if (ent.tipo === 'semprazo') html = '<div class="txt-warn">sem prazo informado</div>';
+    else html = `<div class="muted">aguardando empenho</div>${l.prazoEntregaDias ? `<div class="small muted">${l.prazoEntregaDias} dias após o empenho</div>` : ''}`;
+    return html + (l.vigenciaFim ? `<div class="small muted">vigência até ${fmtData(l.vigenciaFim)}</div>` : '');
+  }
+
   // ---------- Painel lateral: contrato / ata ----------
   const dlgC = $('#dlg-contrato');
   const formC = $('#form-contrato');
@@ -647,9 +693,9 @@
     const passos = precisaAssinatura(r) ? [
       ['recebido', 'Recebido', e.recebido], ['assinadoNos', 'Assinado por nós', e.assinadoNos],
       ['assinadoOrgao', 'Assinado pelo órgão', e.assinadoOrgao], ['publicado', 'Publicado', e.publicado],
-      ['vigencia', 'Vigente até', r.vigenciaFim],
-    ] : [['recebido', 'Recebido', e.recebido], ['vigencia', 'Vigente até', r.vigenciaFim]];
-    const proximo = passos.find(([k, , v]) => !v && k !== 'vigencia');
+      passoEntrega(r),
+    ] : [['recebido', 'Recebido', e.recebido], passoEntrega(r)];
+    const proximo = passos.find(([k, , v]) => !v && k !== 'entrega');
     $('#contrato-head').innerHTML = `
       <div class="dh-top">
         <div>
@@ -668,10 +714,10 @@
         <div><div class="k">Saldo a executar</div><div class="v mono">${fmtMoeda(saldoExecutar(r))}</div></div>
         <div><div class="k">Saldo a empenhar</div><div class="v mono">${fmtMoeda(saldo(r))}</div></div>` : ''}
       </div>
-      ${ganha ? `<ol class="passos">${passos.map(([k, rot, v]) => `
+      ${ganha ? `<ol class="passos">${passos.map(([k, rot, v, alt]) => `
         <li class="${v ? 'feito' : ''} ${proximo && proximo[0] === k ? 'proximo' : ''}">
-          ${!v && k !== 'vigencia' && !somenteLeitura ? `<button type="button" class="passo-btn" data-passo="${k}" title="Marcar como feito hoje">${rot}</button>` : `<span class="passo-rot">${rot}</span>`}
-          <span class="mono passo-data">${v ? fmtData(v) : '—'}</span>
+          ${!v && k !== 'entrega' && !somenteLeitura ? `<button type="button" class="passo-btn" data-passo="${k}" title="Marcar como feito hoje">${rot}</button>` : `<span class="passo-rot">${rot}</span>`}
+          <span class="mono passo-data">${v ? fmtData(v) : alt || '—'}</span>
         </li>`).join('')}</ol>` : ''}
       ${st.acoes.length ? `<div class="dh-acoes">${st.acoes.map((a) => `<span class="acao ${a.nivel}">⚠ ${esc(a.texto)}</span>`).join('')}</div>` : ''}
       ${ganha && proximo && !somenteLeitura ? `<button type="button" class="btn small" data-passo="${proximo[0]}">✓ Marcar “${proximo[1]}” como feito hoje</button>` : ''}`;

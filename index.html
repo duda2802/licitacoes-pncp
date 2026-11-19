@@ -9,8 +9,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261117b">
-  <script src="config.js?v=20261117b"></script>
+  <link rel="stylesheet" href="style.css?v=20261119a">
+  <script src="config.js?v=20261119a"></script>
 </head>
 <body>
   <!-- Tela de login (só aparece quando o login está configurado em config.js) -->
@@ -128,7 +128,7 @@
           <input type="search" id="busca-contratos" placeholder="Buscar nº, órgão, licitação, objeto, item…">
           <select id="ordem-contratos" aria-label="Ordenar">
             <option value="urgente">Mais urgentes</option>
-            <option value="vigencia">Vigência terminando antes</option>
+            <option value="vigencia">Entrega mais próxima</option>
             <option value="recente">Mais recentes</option>
             <option value="saldo">Maior saldo</option>
             <option value="orgao">Órgão (A–Z)</option>
@@ -142,7 +142,7 @@
       <div class="table-wrap">
         <table class="table" id="tabela-contratos">
           <thead><tr>
-            <th>Documento</th><th>Órgão e objeto</th><th>Analista</th><th>Vigência</th><th>Saldo</th><th>Status</th>
+            <th>Documento</th><th>Órgão e objeto</th><th>Analista</th><th>Prazo de entrega</th><th>Saldo</th><th>Status</th>
           </tr></thead>
           <tbody></tbody>
         </table>
@@ -446,9 +446,9 @@
   <div id="toast" role="status" aria-live="polite"></div>
 
   <script src="assets/vendor/supabase-2.118.0.js"></script>
-  <script src="app.js?v=20261117b"></script>
-  <script src="auth.js?v=20261117b"></script>
-  <script src="arquivos.js?v=20261117b"></script>
-  <script src="pncp.js?v=20261117b"></script>
+  <script src="app.js?v=20261119a"></script>
+  <script src="auth.js?v=20261119a"></script>
+  <script src="arquivos.js?v=20261119a"></script>
+  <script src="pncp.js?v=20261119a"></script>
 </body>
 </html>
