@@ -457,3 +457,7 @@ html:not(.somente-leitura) .so-leitor { display: none !important; }
 
 .bloco-titulo { font-size: 1rem; font-weight: 800; margin: .4rem 0 .6rem; display: flex; gap: .6rem; align-items: baseline; }
 .bloco-titulo .muted { font-size: .8rem; font-weight: 600; }
+
+.txt-danger { color: var(--danger); font-weight: 700; }
+.txt-warn { color: var(--warn); font-weight: 700; }
+.txt-ok { color: var(--ok); }
