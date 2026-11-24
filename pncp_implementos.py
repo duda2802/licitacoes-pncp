@@ -814,6 +814,8 @@ def avaliar_itens(compra, termos, so_com_termo=False):
         if RE_LOCACAO.search(obj) or (RE_SERVICO_OBJETO.search(obj) and not RE_AQUISICAO.search(obj)):
             # locação/concessão/transporte/coleta: contrata o serviço, não compra
             return False, [], "locação"
+        if RE_OBJETO_FORA_DO_ESCOPO.search(obj):
+            return False, [], "fora do escopo"
         return not inclui_caminhao(objeto), [], "objeto (itens de serviço)"
     if all(inclui_caminhao(i.get("descricao")) for i in materiais):
         # só caminhões ("Caminhão Carga ...") num objeto que usa o termo
