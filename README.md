@@ -155,3 +155,30 @@ Modalidades (código PNCP): 6 pregão eletrônico, 7 pregão presencial,
 Cada pregão encontrado gera uma consulta extra (itens), então a execução fica
 um pouco mais lenta. Sem `--uf` o script percorre todas as páginas do Brasil inteiro (50 por página),
 o que pode levar alguns minutos, porque a API do PNCP é lenta.
+
+## Rotina diária (`rotina/rotina_diaria.py`)
+
+Gera de uma vez as 6 planilhas do dia em `planilhas/AAAA-MM-DD/` (implementos,
+caminhão + implemento novo e usado, carretinhas, containers, compras planejadas e
+galpão/obras):
+
+```
+pip install -r requirements.txt
+python3 rotina/rotina_diaria.py            # leva ~1 h (lista completa do PNCP)
+python3 rotina/rotina_diaria.py --reusar   # refaz as planilhas com o download do dia
+```
+
+- baixa a lista **completa** de contratações abertas (pregão, concorrência e dispensa),
+  repetindo as páginas que falharem;
+- roda a busca do site do PNCP com todos os termos de `termos.txt` até completar
+  ("carroceria" e "prancha" sozinhos são trocados por variações, que completam);
+- caminhão usado: compras que aceitam usado/seminovo, ano mínimo antigo ou transformação
+  de caminhão usado (nunca leilão);
+- carretinhas: reboques leves e carretas de barco/lancha/jet/moto, em planilha própria;
+- Portal de Compras Públicas: processos recebendo propostas com os termos que ainda não
+  estão no PNCP viram a aba "Só no Portal de Compras" da planilha de implementos;
+- confere os itens dos editais novos que não entraram em nenhuma planilha e lista os
+  suspeitos no resumo.
+
+"Novo hoje" compara com a rodada anterior: usa `dados/<data>/chaves.json` e, se não
+houver, os Nº de controle das planilhas da pasta anterior.
