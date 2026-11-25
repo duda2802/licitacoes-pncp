@@ -701,10 +701,17 @@ RE_ITEM_OUTRO_VEICULO = re.compile(
     r"|^(?:\W*\d+\W*)?veiculo (?:tipo )?furgao\b")
 
 
+# carretinha e carreta de barco/lancha/jet/moto não é implemento (a usuária não fabrica)
+RE_ITEM_CARRETINHA = re.compile(
+    r"\bcarretinhas?\b"
+    r"|\b(?:carretas?|reboques?)\b(?: \w+){0,4} (?:transporte|para|p) "
+    r"(?:\w+ ){0,3}(?:embarcac|lancha|barco|bote|jet|moto|caiaque)")
+
+
 def item_fora(item):
     desc = normalizar(item.get("descricao"))
     palavras = desc.split()
-    return bool(RE_ITEM_FORA.search(" ".join(palavras[:20]))
+    return bool(RE_ITEM_CARRETINHA.search(" ".join(palavras[:15])) or RE_ITEM_FORA.search(" ".join(palavras[:20]))
                 or RE_ITEM_FORA_NOME.search(" ".join(palavras[:8]))
                 or RE_ITEM_OUTRO_VEICULO.search(desc)
                 or RE_ITEM_PEQUENO.search(" ".join(palavras[:10]))
@@ -730,8 +737,8 @@ VALOR_MINIMO_CARRETA_AGRICOLA = 100_000
 RE_CARRETA = re.compile(r"\b(?:carret|reboque|semirreboque|tanque)\w*")
 # reboque feito para levar outra coisa pela estrada (barco, máquina, moto)
 RE_REBOQUE_DE_TRANSPORTE = re.compile(
-    r"\W*(?:carretas?|carretinhas?|reboques?)\b(?: \w+){0,4} (?:transporte|para|p) "
-    r"(?:\w+ ){0,3}(?:embarcac|lancha|barco|bote|jet|moto|retroescavadeira|maquina|veiculo|equipamento)")
+    r"\W*(?:carretas?|reboques?)\b(?: \w+){0,4} (?:transporte|para|p) "
+    r"(?:\w+ ){0,3}(?:retroescavadeira|maquina|veiculo|equipamento)")
 
 
 def valor_unitario(item):
