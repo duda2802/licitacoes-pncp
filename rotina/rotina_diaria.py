@@ -139,24 +139,59 @@ def baixar_tudo(dados_dir, dias=90):
 
 
 # ---------------------------------------------------------------- 2. busca do site
-def buscar_termo_site(termo, paginas=30):
+def _pagina_site(termo, pagina, tam):
+    params = {"q": termo, "tipos_documento": "edital", "ordenacao": "-data", "pagina": pagina,
+              "tam_pagina": tam, "status": "recebendo_proposta"}
+    return p.get_json(p.API_BUSCA, params, tentativas=3) or {}
+
+
+def _faixa_site(termo, inicio, tam, perdidos):
+    """Editais das posições [inicio, inicio+tam) da busca. Se a página der erro (às vezes um
+    único edital quebra a página inteira no PNCP), divide em páginas menores até isolar o
+    edital problemático, que fica de fora e é contado em `perdidos`."""
+    try:
+        return (_pagina_site(termo, inicio // tam + 1, tam).get("items") or []), True
+    except p.ErroAPI:
+        if tam == 1:
+            perdidos.append(inicio)
+            return [], True
+        meio = tam // 2 if tam % 2 == 0 else 1
+        # tamanhos que dividem a faixa em páginas alinhadas
+        for sub in (tam // 2, tam // 4, tam // 5, tam // 10, 1):
+            if sub >= 1 and tam % sub == 0 and inicio % sub == 0:
+                meio = sub
+                break
+        itens = []
+        for k in range(inicio, inicio + tam, meio):
+            sub_itens, _ = _faixa_site(termo, k, meio, perdidos)
+            itens += sub_itens
+            if len(sub_itens) < meio and not perdidos[-1:] == [k]:
+                break
+        return itens, True
+
+
+def buscar_termo_site(termo, paginas=30, tam=100):
     """(achados, editais, completou) de um termo na busca do site do PNCP."""
-    achados, editais = set(), {}
-    for pag in range(1, paginas + 1):
-        params = {"q": termo, "tipos_documento": "edital", "ordenacao": "-data", "pagina": pag,
-                  "tam_pagina": 100, "status": "recebendo_proposta"}
+    achados, editais, perdidos = set(), {}, []
+    primeira = None
+    for pg, t in ((1, 20), (2, 20), (3, 10), (7, 5), (40, 1), (1, 1)):
         try:
-            d = p.get_json(p.API_BUSCA, params, tentativas=4) or {}
+            primeira = _pagina_site(termo, pg, t)
+            break
         except p.ErroAPI:
-            return achados, editais, False
-        itens = d.get("items") or []
+            continue
+    if primeira is None:
+        return achados, editais, False
+    total = min(primeira.get("total") or 0, paginas * tam)
+    for inicio in range(0, total, tam):
+        itens, _ = _faixa_site(termo, inicio, tam, perdidos)
         for i in itens:
             k = i.get("numero_controle_pncp")
             if k:
                 achados.add(k)
                 editais[k] = i
-        if len(itens) < 100 or pag * 100 >= (d.get("total") or 0):
-            break
+    if perdidos:
+        log(f"  '{termo}': {len(perdidos)} edital(is) da busca não abrem no PNCP e ficaram de fora")
     return achados, editais, True
 
 
@@ -250,19 +285,19 @@ def caminhao_usado(contr, cache):
         obj = p.normalizar(c.get("objetoCompra"))
         if p.RE_LOCACAO.search(obj) or p.RE_SERVICO_OBJETO.search(obj) or RE_FORA_USADO.search(obj):
             continue
-        textos = [obj]
+        textos = [obj] if RE_CAMINHAO_OBJ.search(obj) else []
         its = cache.dados.get(c.get("numeroControlePNCP")) or []
-        textos += [p.normalizar(i.get("descricao")) for i in its
-                   if RE_CAMINHAO_OBJ.search(p.normalizar(i.get("descricao")))]
+        for i in its:
+            d = p.normalizar(i.get("descricao"))
+            if re.search(r"\bcaminh(?:ao|oes)\b", " ".join(d.split()[:10])) and not RE_FORA_USADO.search(d[:200]):
+                textos.append(d)
         sinal = None
         for t in textos:
-            if not RE_CAMINHAO_OBJ.search(t) and t is not obj:
-                continue
             m = RE_USADO.search(t)
-            if m and not RE_NEGA_USADO.search(t):
+            if m and not RE_NEGA_USADO.search(t) and not re.search(r"\busad[oa]s? (?:em|para|na|no|nos|nas|como|pel)\b", t):
                 sinal = m.group(0)
                 break
-        if sinal and RE_CAMINHAO_OBJ.search(" ".join(textos)):
+        if sinal:
             saida.append({**c, "_sinal_usado": sinal})
     return saida
 
@@ -648,11 +683,19 @@ def main():
 
     # 5. carretinhas
     log("5. Carretinhas...")
-    achados_carr = set()
-    for t in TERMOS_CARRETINHA:
-        a, e, _ = buscar_termo_site(t, paginas=5)
-        achados_carr |= a
-        p.EDITAIS_DO_SITE.update(e)
+    arq_carr = dados / "carretinhas_site.json"
+    salvo = ler_json(arq_carr) if args.reusar else None
+    if salvo:
+        achados_carr = set(salvo["achados"])
+        p.EDITAIS_DO_SITE.update(salvo["editais"])
+    else:
+        achados_carr, ed_carr = set(), {}
+        for t in TERMOS_CARRETINHA:
+            a, e, _ = buscar_termo_site(t, paginas=5)
+            achados_carr |= a
+            ed_carr.update(e)
+        p.EDITAIS_DO_SITE.update(ed_carr)
+        salvar_json({"achados": sorted(achados_carr), "editais": ed_carr}, arq_carr)
     contr_carr = p.completar_com_site(contr, achados_carr, p.MODALIDADES_PADRAO)
     linhas_carr = carretinhas(contr_carr, cache, achados_carr)
     chaves_carr = salvar_carretinhas(saida / f"licitacoes_{dia}_carretinhas.xlsx", linhas_carr,
@@ -664,10 +707,21 @@ def main():
         log("6. Portal de Compras Públicas...")
         pcp, falhas_pcp = portal_compras(sorted({t for _, t, _ in termos}))
         links = " ".join((c.get("linkSistemaOrigem") or "") for c in contr)
+        por_cidade = {}
+        for c in contr:
+            cid = p.normalizar((c.get("unidadeOrgao") or {}).get("municipioNome"))
+            por_cidade.setdefault(cid, []).append(set(p.normalizar(c.get("objetoCompra")).split()[:25]))
+
+        def ja_no_pncp(r):
+            cid = p.normalizar((r.get("unidadeCompradora") or {}).get("cidade"))
+            pal = set(p.normalizar(re.sub(r"^\[[^]]*\]\s*-?", "", r.get("resumo") or "")).split()[:25])
+            return any(len(pal & o) >= 0.6 * max(1, min(len(pal), len(o))) for o in por_cidade.get(cid, []))
+
         for cod, r in pcp.items():
             obj = p.normalizar(r.get("resumo"))
-            if f"-{cod}" in links or p.RE_LOCACAO.search(obj) or p.RE_SERVICO_OBJETO.search(obj) \
-                    or re.search(r"\bcredenciamento\b|prestacao de servic|agricol", obj):
+            if f"-{cod}" in links or ja_no_pncp(r) or p.RE_LOCACAO.search(obj) \
+                    or p.RE_SERVICO_OBJETO.search(obj) \
+                    or re.search(r"\bcredenciamento\b|servicos? de|prestacao de servic|agricol", obj):
                 continue
             so_pcp.append(r)
         aba_portal_compras(f"{saida}/licitacoes_{dia}_implementos.xlsx", so_pcp)
