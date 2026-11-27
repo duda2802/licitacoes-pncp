@@ -718,7 +718,7 @@
   }
   function celulaVistoria(l) {
     const v = l.dataVistoria
-      ? `<div class="mono"><strong>vistoria ${fmtData(l.dataVistoria)}</strong></div><div class="small muted">${textoDias(diasAte(l.dataVistoria))}</div>`
+      ? `<div class="mono"><strong>vistoria ${fmtData(l.dataVistoria)}${l.horaVistoria ? ' ' + esc(l.horaVistoria) : ''}</strong></div><div class="small muted">${textoDias(diasAte(l.dataVistoria))}${l.localVistoria ? ' · ' + esc(l.localVistoria) : ''}</div>`
       : '<div class="txt-warn">vistoria a agendar</div>';
     return v + (l.prazoEntregaDias ? `<div class="small muted">entrega: ${l.prazoEntregaDias} dias após o empenho</div>` : '');
   }
@@ -822,7 +822,10 @@
           ${!v && k !== 'entrega' && !somenteLeitura ? `<button type="button" class="passo-btn" data-passo="${k}" title="Marcar como feito hoje">${rot}</button>` : `<span class="passo-rot">${rot}</span>`}
           <span class="mono passo-data">${v ? fmtData(v) : alt || '—'}</span>
         </li>`).join('')}</ol>` : ''}
-      ${st.acoes.length ? `<div class="dh-acoes">${st.acoes.map((a) => `<span class="acao ${a.nivel}">⚠ ${esc(a.texto)}</span>`).join('')}</div>` : ''}
+      ${st.acoes.length ? `<div class="dh-acoes">${st.acoes.map((a) => /vistoria/i.test(a.texto) && !somenteLeitura
+        ? `<button type="button" class="acao ${a.nivel} acao-btn" data-ir-vistoria>⚠ ${esc(a.texto)} →</button>`
+        : `<span class="acao ${a.nivel}">⚠ ${esc(a.texto)}</span>`).join('')}</div>` : ''}
+      ${r.resultado === 'vistoria' && r.dataVistoria ? `<div class="dh-vistoria">📅 Vistoria: <strong>${fmtData(r.dataVistoria)}${r.horaVistoria ? ' às ' + esc(r.horaVistoria) : ''}</strong>${r.localVistoria ? ' · ' + esc(r.localVistoria) : ''} <span class="muted">(${textoDias(diasAte(r.dataVistoria))})</span></div>` : ''}
       ${ganha && proximo && !somenteLeitura ? `<button type="button" class="btn small" data-passo="${proximo[0]}">✓ Marcar “${proximo[1]}” como feito hoje</button>` : ''}`;
   }
 
@@ -895,6 +898,14 @@
   });
 
   dlgC.addEventListener('click', (e) => {
+    if (e.target.closest('[data-ir-vistoria]')) {
+      const bloco = $('#bloco-vistoria');
+      bloco.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      bloco.classList.add('destaque');
+      setTimeout(() => bloco.classList.remove('destaque'), 1600);
+      formC.dataVistoria.focus({ preventScroll: true });
+      return;
+    }
     const passo = e.target.closest('[data-passo]');
     if (passo && !somenteLeitura) {
       const k = passo.dataset.passo;

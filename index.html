@@ -9,8 +9,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261127d">
-  <script src="config.js?v=20261127d"></script>
+  <link rel="stylesheet" href="style.css?v=20261127e">
+  <script src="config.js?v=20261127e"></script>
 </head>
 <body>
   <!-- Tela de login (só aparece quando o login está configurado em config.js) -->
@@ -334,7 +334,15 @@
             <label>Nº do processo<input name="processo"></label>
             <label>Analista que venceu / gestor interno<select name="analista" data-analistas></select></label>
             <label>Data da sessão<input type="date" name="dataSessao"></label>
-            <label class="so-vistoria">Data da vistoria / avaliação<input type="date" name="dataVistoria"></label>
+            <div class="span-2 so-vistoria bloco-vistoria" id="bloco-vistoria">
+              <div class="bv-titulo">Vistoria / avaliação do veículo</div>
+              <div class="form-grid cols-3">
+                <label>Data<input type="date" name="dataVistoria"></label>
+                <label>Horário<input type="time" name="horaVistoria"></label>
+                <label>Local<input name="localVistoria" placeholder="Cidade / endereço onde o veículo estará"></label>
+              </div>
+              <p class="muted small">Combine com a Comissão pelo portal ou e-mail e registre aqui a data acertada.</p>
+            </div>
             <label>Link (PNCP / portal)<input type="url" name="link" placeholder="https://"></label>
             <label class="span-2">Objeto<textarea name="objeto" rows="2"></textarea></label>
           </div>
@@ -527,9 +535,9 @@
   <div id="toast" role="status" aria-live="polite"></div>
 
   <script src="assets/vendor/supabase-2.118.0.js"></script>
-  <script src="app.js?v=20261127d"></script>
-  <script src="auth.js?v=20261127d"></script>
-  <script src="arquivos.js?v=20261127d"></script>
-  <script src="pncp.js?v=20261127d"></script>
+  <script src="app.js?v=20261127e"></script>
+  <script src="auth.js?v=20261127e"></script>
+  <script src="arquivos.js?v=20261127e"></script>
+  <script src="pncp.js?v=20261127e"></script>
 </body>
 </html>
