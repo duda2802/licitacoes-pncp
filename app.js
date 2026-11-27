@@ -201,6 +201,13 @@
       return { chave: 'aguardando_resultado', rotulo: 'Aguardando resultado', classe: 'info', acoes };
     }
     if (l.resultado === 'perdida') return { chave: 'perdida', rotulo: 'Perdida', classe: '', acoes };
+    if (l.resultado === 'vistoria') {
+      // Ganhou a disputa de preços; falta a vistoria/avaliação do bem para ser declarada vencedora
+      if (!l.dataVistoria) acoes.push({ texto: 'Agendar a vistoria (informar local, data e horário à Comissão)', nivel: 'warn' });
+      else if (diasAte(l.dataVistoria) < 0) acoes.push({ texto: 'Atualizar o resultado da vistoria', nivel: 'warn' });
+      if (!l.analista) acoes.push({ texto: 'Definir o analista responsável', nivel: 'warn' });
+      return { chave: 'aguardando_vistoria', rotulo: 'Aguardando vistoria', classe: 'warn', acoes };
+    }
 
     const e = l.etapas || {};
     let st;
@@ -365,6 +372,7 @@
 
     // Vendas (contratos/atas ganhos, menos os rescindidos)
     const vendas = lics.filter((l) => l.resultado === 'ganha' && l.situacao !== 'rescindido');
+    const emVistoria = lics.filter((l) => l.resultado === 'vistoria');
     const somaV = (arr) => arr.reduce((s, l) => s + (Number(l.valor) || 0), 0);
     const mes = hojeISO().slice(0, 7);
     const ano = hojeISO().slice(0, 4);
@@ -375,7 +383,8 @@
     $('#kpis-fat').innerHTML = [
       kpi(`Vendido em ${nomeMes}`, fmtMoeda(somaV(vMes)), plural(vMes.length, 'contrato/ata', 'contratos/atas')),
       kpi(`Vendido em ${ano}`, fmtMoeda(somaV(vAno)), plural(vAno.length, 'contrato/ata', 'contratos/atas')),
-      kpi('Total vendido', fmtMoeda(somaV(vendas)), plural(vendas.length, 'contrato/ata', 'contratos/atas')),
+      kpi('Total vendido', fmtMoeda(somaV(vendas)), plural(vendas.length, 'contrato/ata', 'contratos/atas') +
+        (emVistoria.length ? ` · + ${fmtMoeda(somaV(emVistoria))} aguardando vistoria` : '')),
       kpi(`Ticket médio ${ano}`, fmtMoeda(medio), 'valor médio por contrato/ata'),
     ].join('');
 
@@ -389,7 +398,7 @@
     const li = ({ l, a }) => `<li data-lic="${l.id}">
       <span class="badge ${a.nivel}">${a.nivel === 'danger' ? 'Urgente' : 'Pendente'}</span>
       <div class="a-body"><div class="a-title">${esc(a.texto)}</div>
-      <div class="a-sub">${esc(INSTRUMENTO[l.instrumento] || 'Licitação')} ${esc(docNumero(l))} · ${esc(l.orgao)}</div></div></li>`;
+      <div class="a-sub">${esc(l.resultado === 'ganha' ? INSTRUMENTO[l.instrumento] || 'Contrato' : 'Licitação')} ${esc(docNumero(l))} · ${esc(l.orgao)}</div></div></li>`;
     $('#alertas').innerHTML = itens.slice(0, LIMITE).map(li).join('') +
       (itens.length > LIMITE ? `<li class="ver-mais" data-ir="contratos" data-pill="acao">+ ${itens.length - LIMITE} — ver em Contratos →</li>` : '') ||
       `<li class="none">${lics.length ? 'Nada pendente. 🎉' : 'Comece em “＋ Novo contrato / ata” ou importe da aba PNCP.'}</li>`;
@@ -413,6 +422,7 @@
     ['suspenso', 'Suspenso', (s) => s.chave === 'suspenso'],
     ['encerrado', 'Encerrado', (s) => s.chave === 'encerrado'],
     ['rescindido', 'Rescindido / cancelado', (s) => s.chave === 'rescindido'],
+    ['vistoria', 'Aguardando vistoria', (s) => s.chave === 'aguardando_vistoria'],
     ['resultado', 'Aguardando resultado', (s) => s.chave === 'aguardando_resultado'],
     ['perdida', 'Perdidas', (s) => s.chave === 'perdida'],
     ['todos', 'Todos', () => true],
@@ -472,9 +482,10 @@
           <div class="muted clamp1">${esc(l.numero)}${l.objeto ? ' — ' + esc(l.objeto) : ''}</div>
           ${variasEmpresas && empresaDe(l) ? `<div class="emp-tag">${esc(nomeEmpresa(empresaDe(l)))}</div>` : ''}</td>
         <td>${l.analista ? esc(l.analista) : ganha ? '<span class="badge warn">Indefinido</span>' : '<span class="muted">—</span>'}</td>
-        <td class="nowrap">${ganha ? celulaEntrega(l) : '<span class="muted">—</span>'}</td>
+        <td class="nowrap">${ganha ? celulaEntrega(l) : l.resultado === 'vistoria' ? celulaVistoria(l) : '<span class="muted">—</span>'}</td>
         <td>${ganha && total ? `<div class="mono">${fmtMoeda(saldoExecutar(l))}</div><div class="progress"><span style="width:${pct}%"></span></div>
-          <div class="muted small">${pct}% entregue de ${fmtMoeda(total)}${totalPedidos(l) ? ` · ${fmtMoeda(totalPedidos(l))} empenhado` : ''}</div>` : '<span class="muted">—</span>'}</td>
+          <div class="muted small">${pct}% entregue de ${fmtMoeda(total)}${totalPedidos(l) ? ` · ${fmtMoeda(totalPedidos(l))} empenhado` : ''}</div>`
+          : l.resultado === 'vistoria' && total ? `<div class="mono">${fmtMoeda(total)}</div><div class="muted small">se aprovada na vistoria</div>` : '<span class="muted">—</span>'}</td>
         <td><span class="status ${s.classe}">${esc(s.rotulo)}</span>
           ${s.acoes.length ? `<div class="acao ${s.acoes[0].nivel}">⚠ ${esc(s.acoes[0].texto)}${s.acoes.length > 1 ? ` <span class="mais">+${s.acoes.length - 1}</span>` : ''}</div>` : ''}</td>
       </tr>`;
@@ -705,6 +716,12 @@
     if (ent.tipo === 'parcial') return ['entrega', 'Entrega', '', 'parcial'];
     return ['entrega', 'Entrega', '', l.prazoEntregaDias ? `${l.prazoEntregaDias} dias do empenho` : '—'];
   }
+  function celulaVistoria(l) {
+    const v = l.dataVistoria
+      ? `<div class="mono"><strong>vistoria ${fmtData(l.dataVistoria)}</strong></div><div class="small muted">${textoDias(diasAte(l.dataVistoria))}</div>`
+      : '<div class="txt-warn">vistoria a agendar</div>';
+    return v + (l.prazoEntregaDias ? `<div class="small muted">entrega: ${l.prazoEntregaDias} dias após o empenho</div>` : '');
+  }
   function celulaEntrega(l) {
     const ent = infoEntrega(l);
     let html;
@@ -752,10 +769,14 @@
   }
 
   function atualizarVisibilidadeC() {
-    const ganha = formC.resultado.value === 'ganha';
+    const res = formC.resultado.value;
+    const ganha = res === 'ganha';
     const existe = !!dlgC.dataset.id;
     for (const s of $$('.so-ganha', dlgC)) s.hidden = !ganha;
     for (const s of $$('.so-existente', dlgC)) s.hidden = !ganha || !existe;
+    for (const s of $$('.so-vistoria', dlgC)) s.hidden = res !== 'vistoria';
+    // Despesas de viagem também valem na fase de vistoria (ex.: levar o veículo para avaliação)
+    $('#sec-despesas').hidden = !existe || !(ganha || res === 'vistoria');
     numerarSecoes(dlgC);
   }
 
