@@ -553,6 +553,11 @@
   // ---------- Prazos ----------
   // ---------- Despesas de viagem ----------
   const CAT_DESPESA = ['Combustível', 'Pedágio', 'Hospedagem', 'Alimentação', 'Passagem (aérea/ônibus)', 'Transporte local (táxi/app)', 'Frete / transporte do equipamento', 'Outros'];
+  /** Nome curto do implemento/objeto do contrato (1º item ganho ou objeto). */
+  const implementoDe = (l) => {
+    const t = (l.itens?.[0]?.descricao || l.objeto || '').replace(/^(aquisi[çc][ãa]o de|fornecimento de|contrata[çc][ãa]o de empresa especializada para o fornecimento de)\s+/i, '');
+    return t.charAt(0).toUpperCase() + t.slice(1);
+  };
   const totalDespesas = (l) => (l.despesas || []).reduce((s, d) => s + (Number(d.valor) || 0), 0);
   function todasDespesas(lics = licsDaEmpresa()) {
     const out = [];
@@ -591,7 +596,8 @@
     const porContrato = licsDaEmpresa().filter((l) => (l.despesas || []).length)
       .map((l) => ({ l, total: totalDespesas(l) })).sort((a, b) => b.total - a.total);
     $('#tabela-desp-contratos tbody').innerHTML = porContrato.map(({ l, total }) => `<tr class="clickable" data-lic="${l.id}">
-      <td><span class="mono">${esc(docNumero(l))}</span><div class="muted small clamp1">${esc(l.orgao)}</div></td>
+      <td><span class="mono">${esc(docNumero(l))}</span><div class="small orgao-min">${esc(l.orgao)}</div>
+        ${implementoDe(l) ? `<div class="muted small clamp1" title="${esc(implementoDe(l))}">${esc(implementoDe(l))}</div>` : ''}</td>
       <td class="num mono">${l.despesas.length}</td><td class="num mono">${fmtMoeda(total)}</td>
       <td class="num mono">${l.valor ? ((total / l.valor) * 100).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + '%' : '—'}</td></tr>`).join('') ||
       '<tr><td colspan="4" class="muted">Nenhuma despesa lançada ainda.</td></tr>';
@@ -614,7 +620,8 @@
       <td class="mono nowrap">${fmtData(d.data)}</td>
       <td>${esc(d.categoria)}${d.anexos?.length ? ' <span class="muted small">📎</span>' : ''}</td>
       <td>${esc(d.descricao || d.motivo || '')}${d.km ? `<div class="muted small">${Number(d.km).toLocaleString('pt-BR')} km</div>` : ''}</td>
-      <td><span class="mono small">${esc(docNumero(l))}</span><div class="muted small clamp1">${esc(l.orgao)}</div></td>
+      <td><span class="mono small">${esc(docNumero(l))}</span><div class="small orgao-min clamp1">${esc(l.orgao)}</div>
+        ${implementoDe(l) ? `<div class="muted small clamp1" title="${esc(implementoDe(l))}">${esc(implementoDe(l))}</div>` : ''}</td>
       <td>${esc(d.pessoa || '—')}</td>
       <td class="num mono">${fmtMoeda(d.valor)}</td></tr>`).join('') +
       (lista.length ? `<tr class="linha-total"><td colspan="5"><strong>Total ${ui.pillD || ui.periodoD || $('#busca-despesas').value ? 'filtrado' : ''}</strong></td><td class="num mono"><strong>${fmtMoeda(soma(lista))}</strong></td></tr>` : '');
@@ -1263,9 +1270,9 @@
   const numBR = (v) => (Number(v) || 0).toFixed(2).replace('.', ',');
   function linhasExport(tipo) {
     if (tipo === 'despesas') {
-      const cab = ['Data', 'Tipo', 'Motivo', 'Descrição', 'Quem', 'Km', 'Valor', 'Empresa', 'Contrato/ata', 'Órgão', 'Comprovante'];
+      const cab = ['Data', 'Tipo', 'Motivo', 'Descrição', 'Quem', 'Km', 'Valor', 'Empresa', 'Contrato/ata', 'Órgão', 'Implemento', 'Comprovante'];
       return [cab, ...listaDespesas().map(({ l, d }) => [fmtData(d.data), d.categoria, d.motivo, d.descricao, d.pessoa, d.km, numBR(d.valor),
-        nomeEmpresa(empresaDe(l)), docNumero(l), l.orgao, d.anexos?.length ? 'sim' : 'não'])];
+        nomeEmpresa(empresaDe(l)), docNumero(l), l.orgao, implementoDe(l), d.anexos?.length ? 'sim' : 'não'])];
     }
     if (tipo === 'contratos') {
       const cab = ['Empresa', 'Tipo', 'Nº contrato/ata', 'Órgão', 'CNPJ do órgão', 'Licitação', 'Processo', 'Objeto', 'Analista', 'Status',
