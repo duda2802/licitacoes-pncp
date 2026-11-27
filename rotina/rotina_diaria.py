@@ -142,7 +142,7 @@ def baixar_tudo(dados_dir, dias=90):
 def _pagina_site(termo, pagina, tam):
     params = {"q": termo, "tipos_documento": "edital", "ordenacao": "-data", "pagina": pagina,
               "tam_pagina": tam, "status": "recebendo_proposta"}
-    return p.get_json(p.API_BUSCA, params, tentativas=3) or {}
+    return p.get_json(p.API_BUSCA, params, tentativas=2) or {}
 
 
 def _faixa_site(termo, inicio, tam, perdidos):
@@ -152,8 +152,8 @@ def _faixa_site(termo, inicio, tam, perdidos):
     try:
         return (_pagina_site(termo, inicio // tam + 1, tam).get("items") or []), True
     except p.ErroAPI:
-        if tam == 1:
-            perdidos.append(inicio)
+        if tam <= 5:
+            perdidos.extend(range(inicio, inicio + tam))
             return [], True
         meio = tam // 2 if tam % 2 == 0 else 1
         # tamanhos que dividem a faixa em páginas alinhadas
@@ -379,7 +379,7 @@ def portal_compras(termos):
 
 # ---------------------------------------------------------------- 7. conferência
 RE_AUDITA = re.compile(
-    r"\b(?:cacamba|basculante|tanque|pipa|comboio|melosa|bau|carroceria|prancha|reboque|carreta"
+    r"\b(?:cacamba|tanque|pipa|comboio|melosa|bau\b|carroceria|reboque|carreta"
     r"|semirreboque|munck|guindaste|guindauto|poliguindaste|roll ?on|compactador|plataforma"
     r"|cesto aereo|cesta aerea|implemento|container|conteiner|contentor|hidrojato|limpa fossa)\w*")
 
