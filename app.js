@@ -1320,10 +1320,16 @@
   }
   const limpaCel = (v) => String(v ?? '').replace(/^—$/, '').replace(/[\t\r\n]+/g, ' ');
   document.addEventListener('click', async (e) => {
-    const btn = e.target.closest('[data-copiar], [data-baixar]');
+    const btn = e.target.closest('[data-copiar], [data-baixar], [data-xlsx]');
     if (!btn) return;
-    const tipo = btn.dataset.copiar || btn.dataset.baixar;
+    const tipo = btn.dataset.copiar || btn.dataset.baixar || btn.dataset.xlsx;
     const linhas = linhasExport(tipo);
+    if (btn.dataset.xlsx) {
+      const abas = { contratos: 'Contratos e atas', pedidos: 'Pedidos e empenhos', despesas: 'Despesas de viagem' };
+      window.XLSXLite.baixar(`${tipo}-${hojeISO()}.xlsx`, linhas.map((r) => r.map(limpaCel)), abas[tipo]);
+      toast(`Planilha Excel com ${linhas.length - 1} linha(s) baixada.`);
+      return;
+    }
     if (btn.dataset.copiar) {
       const tsv = linhas.map((r) => r.map(limpaCel).join('\t')).join('\n');
       try { await navigator.clipboard.writeText(tsv); toast(`${linhas.length - 1} linhas copiadas. Cole no Excel (Ctrl+V).`); }
