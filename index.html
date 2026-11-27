@@ -9,8 +9,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261127c">
-  <script src="config.js?v=20261127c"></script>
+  <link rel="stylesheet" href="style.css?v=20261127d">
+  <script src="config.js?v=20261127d"></script>
 </head>
 <body>
   <!-- Tela de login (só aparece quando o login está configurado em config.js) -->
@@ -301,6 +301,7 @@
             <label>Resultado da licitação
               <select name="resultado">
                 <option value="ganha">Ganha</option>
+                <option value="vistoria">Arrematada — aguardando vistoria</option>
                 <option value="aguardando">Aguardando resultado</option>
                 <option value="perdida">Perdida</option>
               </select>
@@ -333,6 +334,7 @@
             <label>Nº do processo<input name="processo"></label>
             <label>Analista que venceu / gestor interno<select name="analista" data-analistas></select></label>
             <label>Data da sessão<input type="date" name="dataSessao"></label>
+            <label class="so-vistoria">Data da vistoria / avaliação<input type="date" name="dataVistoria"></label>
             <label>Link (PNCP / portal)<input type="url" name="link" placeholder="https://"></label>
             <label class="span-2">Objeto<textarea name="objeto" rows="2"></textarea></label>
           </div>
@@ -356,7 +358,7 @@
 
         <section class="sec so-ganha so-existente" id="sec-itens"></section>
         <section class="sec so-ganha so-existente" id="sec-pedidos"></section>
-        <section class="sec so-ganha so-existente" id="sec-despesas"></section>
+        <section class="sec so-existente" id="sec-despesas"></section>
 
         <section class="sec">
           <div class="sec-head"><h3><span class="sec-n" data-n="docs">5</span> Documentos</h3><span class="muted">Ata, contrato, publicação, aditivos…</span></div>
@@ -525,9 +527,9 @@
   <div id="toast" role="status" aria-live="polite"></div>
 
   <script src="assets/vendor/supabase-2.118.0.js"></script>
-  <script src="app.js?v=20261127c"></script>
-  <script src="auth.js?v=20261127c"></script>
-  <script src="arquivos.js?v=20261127c"></script>
-  <script src="pncp.js?v=20261127c"></script>
+  <script src="app.js?v=20261127d"></script>
+  <script src="auth.js?v=20261127d"></script>
+  <script src="arquivos.js?v=20261127d"></script>
+  <script src="pncp.js?v=20261127d"></script>
 </body>
 </html>
