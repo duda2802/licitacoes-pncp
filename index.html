@@ -9,8 +9,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261119a">
-  <script src="config.js?v=20261119a"></script>
+  <link rel="stylesheet" href="style.css?v=20261127a">
+  <script src="config.js?v=20261127a"></script>
 </head>
 <body>
   <!-- Tela de login (só aparece quando o login está configurado em config.js) -->
@@ -97,6 +97,7 @@
       <button class="tab" data-view="contratos"><span class="tab-t">Contratos e atas</span><span class="tab-s" id="tab-s-contratos"></span></button>
       <button class="tab" data-view="pedidos"><span class="tab-t">Pedidos e empenhos</span><span class="tab-s" id="tab-s-pedidos"></span></button>
       <button class="tab" data-view="prazos"><span class="tab-t">Prazos</span><span class="tab-s" id="tab-s-prazos"></span></button>
+      <button class="tab" data-view="despesas"><span class="tab-t">Despesas</span><span class="tab-s" id="tab-s-despesas"></span></button>
       <button class="tab so-editor" data-view="pncp"><span class="tab-t">PNCP</span><span class="tab-s">importar</span></button>
     </nav>
 
@@ -193,6 +194,46 @@
         </table>
       </div>
       <p class="empty" id="vazio-prazos" hidden>Nenhum prazo para mostrar.</p>
+    </section>
+
+    <!-- DESPESAS DE VIAGEM -->
+    <section id="view-despesas" class="view">
+      <div class="kpis" id="kpis-despesas"></div>
+      <div class="grid-desp">
+        <div class="card">
+          <h2>Por contrato</h2>
+          <div class="table-wrap plano"><table class="table compact" id="tabela-desp-contratos">
+            <thead><tr><th>Contrato</th><th class="num">Despesas</th><th class="num">Total</th><th class="num">% do contrato</th></tr></thead>
+            <tbody></tbody>
+          </table></div>
+        </div>
+        <div class="card">
+          <h2>Por tipo</h2>
+          <ul class="por-tipo" id="desp-por-tipo"></ul>
+        </div>
+      </div>
+      <div class="toolbar">
+        <div class="pills" id="pills-despesas"></div>
+        <div class="toolbar-right">
+          <input type="search" id="busca-despesas" placeholder="Buscar descrição, pessoa, órgão, contrato…">
+          <select id="periodo-despesas" aria-label="Período">
+            <option value="">Todo o período</option>
+            <option value="mes">Este mês</option>
+            <option value="ano">Este ano</option>
+          </select>
+        </div>
+      </div>
+      <div class="export-links">
+        <button class="link" data-copiar="despesas">Copiar lista para o Excel</button>
+        <button class="link" data-baixar="despesas">Baixar planilha (.csv)</button>
+      </div>
+      <div class="table-wrap">
+        <table class="table" id="tabela-despesas">
+          <thead><tr><th>Data</th><th>Tipo</th><th>Descrição</th><th>Contrato</th><th>Quem</th><th class="num">Valor</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <p class="empty" id="vazio-despesas" hidden>Nenhuma despesa lançada. Abra um contrato ganho e use “＋ Nova despesa” na seção Despesas de viagem.</p>
     </section>
 
     <!-- PNCP -->
@@ -315,6 +356,7 @@
 
         <section class="sec so-ganha so-existente" id="sec-itens"></section>
         <section class="sec so-ganha so-existente" id="sec-pedidos"></section>
+        <section class="sec so-ganha so-existente" id="sec-despesas"></section>
 
         <section class="sec">
           <div class="sec-head"><h3><span class="sec-n" data-n="docs">5</span> Documentos</h3><span class="muted">Ata, contrato, publicação, aditivos…</span></div>
@@ -376,6 +418,43 @@
         <span class="muted so-leitor small">Você tem acesso só de visualização.</span>
         <button type="button" class="btn" data-close>Fechar</button>
         <button type="submit" class="btn primary so-editor" id="btn-salvar-pedido">Salvar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Despesa de viagem -->
+  <dialog id="dlg-despesa">
+    <form id="form-despesa" class="dlg-pad" novalidate autocomplete="off">
+      <h2 id="despesa-titulo">Nova despesa de viagem</h2>
+      <p class="muted" id="despesa-contrato"></p>
+      <div class="form-grid">
+        <label>Data *<input type="date" name="data" required></label>
+        <label>Valor (R$) *<input name="valor" inputmode="decimal" placeholder="0,00" required></label>
+        <label>Tipo
+          <select name="categoria">
+            <option>Combustível</option><option>Pedágio</option><option>Hospedagem</option><option>Alimentação</option>
+            <option>Passagem (aérea/ônibus)</option><option>Transporte local (táxi/app)</option><option>Frete / transporte do equipamento</option><option>Outros</option>
+          </select>
+        </label>
+        <label>Quem viajou<input name="pessoa" placeholder="Ex.: técnico de instalação"></label>
+        <label class="span-2">Descrição<input name="descricao" placeholder="Ex.: Viagem para entrega e instalação em Chapecó"></label>
+        <label>Km rodados <span class="muted">(opcional)</span><input type="number" min="0" name="km"></label>
+        <label>Motivo
+          <select name="motivo">
+            <option>Entrega / instalação</option><option>Vistoria / medição</option><option>Assistência técnica / garantia</option>
+            <option>Assinatura / reunião</option><option>Outro</option>
+          </select>
+        </label>
+      </div>
+      <section class="sec despesa-docs">
+        <div class="sec-head"><h3>Comprovante</h3><span class="muted">Nota, cupom ou recibo</span></div>
+        <div class="anexos" data-anexos="despesa"></div>
+      </section>
+      <div class="dlg-actions">
+        <button type="button" class="btn danger so-editor" id="btn-excluir-despesa">Excluir</button>
+        <span class="spacer"></span>
+        <button type="button" class="btn" data-close>Fechar</button>
+        <button type="submit" class="btn primary so-editor" id="btn-salvar-despesa">Salvar</button>
       </div>
     </form>
   </dialog>
@@ -446,9 +525,9 @@
   <div id="toast" role="status" aria-live="polite"></div>
 
   <script src="assets/vendor/supabase-2.118.0.js"></script>
-  <script src="app.js?v=20261119a"></script>
-  <script src="auth.js?v=20261119a"></script>
-  <script src="arquivos.js?v=20261119a"></script>
-  <script src="pncp.js?v=20261119a"></script>
+  <script src="app.js?v=20261127a"></script>
+  <script src="auth.js?v=20261127a"></script>
+  <script src="arquivos.js?v=20261127a"></script>
+  <script src="pncp.js?v=20261127a"></script>
 </body>
 </html>
