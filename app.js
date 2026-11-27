@@ -1041,7 +1041,7 @@
     const d = despId ? lic.despesas.find((x) => x.id === despId) : null;
     ctxD = { lic, d };
     formD.reset();
-    escreverForm(formD, d || { data: hojeISO(), categoria: 'Combustível', motivo: 'Entrega / instalação' });
+    escreverForm(formD, d || { data: hojeISO(), categoria: 'Combustível', motivo: 'Busca do caminhão para instalação' });
     travarCampos(formD);
     $('#despesa-titulo').textContent = d ? 'Despesa de viagem' : 'Nova despesa de viagem';
     $('#despesa-contrato').textContent = `${INSTRUMENTO[lic.instrumento] || 'Contrato'} ${docNumero(lic)} · ${lic.orgao}`;
