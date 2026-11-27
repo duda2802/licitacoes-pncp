@@ -474,3 +474,5 @@ html:not(.somente-leitura) .so-leitor { display: none !important; }
 #dlg-despesa { width: min(620px, calc(100vw - 32px)); }
 .despesa-docs { margin: 1rem 0 0; }
 @media (max-width: 1000px) { .grid-desp { grid-template-columns: 1fr; } }
+.orgao-min { text-transform: uppercase; font-weight: 700; font-size: .78rem; }
+#tabela-desp-contratos .clamp1 { max-width: 360px; }
