@@ -47,6 +47,8 @@
     }
     for (const l of data.licitacoes) {
       l.pedidos ||= [];
+      l.despesas ||= [];
+      for (const d of l.despesas) d.anexos ||= [];
       l.anexos ||= [];
       for (const p of l.pedidos) p.anexos ||= [];
       if (!l.etapas) {
@@ -75,7 +77,7 @@
   }
 
   function carregarUI() {
-    const base = { view: 'painel', empresa: '', pillC: 'andamento', pillP: 'andamento', pillZ: '', ordemC: 'urgente', ordemP: 'urgente' };
+    const base = { view: 'painel', empresa: '', pillC: 'andamento', pillP: 'andamento', pillZ: '', pillD: '', periodoD: '', ordemC: 'urgente', ordemP: 'urgente' };
     try { return { ...base, ...JSON.parse(localStorage.getItem(UI_KEY) || '{}') }; } catch (e) { return base; }
   }
   function salvarUI() { try { localStorage.setItem(UI_KEY, JSON.stringify(ui)); } catch (e) { /* ok */ } }
@@ -304,8 +306,9 @@
     renderContratos();
     renderPedidos();
     renderPrazos();
+    renderDespesas();
     const dc = $('#dlg-contrato');
-    if (dc.open && dc.dataset.id) { renderContratoHead(); renderSecPedidos(); renderSecItens(); renderAnexosContrato(); }
+    if (dc.open && dc.dataset.id) { renderContratoHead(); renderSecPedidos(); renderSecDespesas(); renderSecItens(); renderAnexosContrato(); }
   }
 
   function renderChips() {
@@ -548,6 +551,77 @@
   }
 
   // ---------- Prazos ----------
+  // ---------- Despesas de viagem ----------
+  const CAT_DESPESA = ['Combustível', 'Pedágio', 'Hospedagem', 'Alimentação', 'Passagem (aérea/ônibus)', 'Transporte local (táxi/app)', 'Frete / transporte do equipamento', 'Outros'];
+  const totalDespesas = (l) => (l.despesas || []).reduce((s, d) => s + (Number(d.valor) || 0), 0);
+  function todasDespesas(lics = licsDaEmpresa()) {
+    const out = [];
+    for (const l of lics) for (const d of l.despesas || []) out.push({ l, d });
+    return out.sort((a, b) => (b.d.data || '').localeCompare(a.d.data || ''));
+  }
+  function listaDespesas() {
+    const busca = $('#busca-despesas').value.trim().toLowerCase();
+    const per = ui.periodoD;
+    const ref = per === 'mes' ? hojeISO().slice(0, 7) : per === 'ano' ? hojeISO().slice(0, 4) : '';
+    return todasDespesas()
+      .filter(({ d }) => !ui.pillD || d.categoria === ui.pillD)
+      .filter(({ d }) => !ref || (d.data || '').startsWith(ref))
+      .filter(({ l, d }) => !busca || [d.descricao, d.pessoa, d.categoria, d.motivo, l.orgao, l.numeroInstrumento, l.numero].join(' ').toLowerCase().includes(busca));
+  }
+
+  function renderDespesas() {
+    const todas = todasDespesas();
+    const soma = (arr) => arr.reduce((s, x) => s + (Number(x.d.valor) || 0), 0);
+    const mes = hojeISO().slice(0, 7);
+    const ano = hojeISO().slice(0, 4);
+    const dMes = todas.filter((x) => (x.d.data || '').startsWith(mes));
+    const dAno = todas.filter((x) => (x.d.data || '').startsWith(ano));
+    const vendido = licsDaEmpresa().filter((l) => l.resultado === 'ganha' && l.situacao !== 'rescindido').reduce((s, l) => s + (Number(l.valor) || 0), 0);
+    const pct = vendido ? (soma(todas) / vendido) * 100 : 0;
+    const nomeMes = hoje().toLocaleDateString('pt-BR', { month: 'long' });
+    $('#tab-s-despesas').textContent = `${fmtMoeda(soma(dMes))} no mês`;
+    $('#kpis-despesas').innerHTML = [
+      kpi(`Despesas em ${nomeMes}`, fmtMoeda(soma(dMes)), plural(dMes.length, 'lançamento')),
+      kpi(`Despesas em ${ano}`, fmtMoeda(soma(dAno)), plural(dAno.length, 'lançamento')),
+      kpi('Total de despesas', fmtMoeda(soma(todas)), plural(new Set(todas.map((x) => x.l.id)).size, 'contrato')),
+      kpi('Sobre as vendas', `${pct.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%`, `de ${fmtMoeda(vendido)} vendidos`),
+    ].join('');
+
+    // Por contrato
+    const porContrato = licsDaEmpresa().filter((l) => (l.despesas || []).length)
+      .map((l) => ({ l, total: totalDespesas(l) })).sort((a, b) => b.total - a.total);
+    $('#tabela-desp-contratos tbody').innerHTML = porContrato.map(({ l, total }) => `<tr class="clickable" data-lic="${l.id}">
+      <td><span class="mono">${esc(docNumero(l))}</span><div class="muted small clamp1">${esc(l.orgao)}</div></td>
+      <td class="num mono">${l.despesas.length}</td><td class="num mono">${fmtMoeda(total)}</td>
+      <td class="num mono">${l.valor ? ((total / l.valor) * 100).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + '%' : '—'}</td></tr>`).join('') ||
+      '<tr><td colspan="4" class="muted">Nenhuma despesa lançada ainda.</td></tr>';
+
+    // Por tipo
+    const porTipo = CAT_DESPESA.map((c) => ({ c, v: soma(todas.filter((x) => x.d.categoria === c)) })).filter((x) => x.v).sort((a, b) => b.v - a.v);
+    const max = porTipo[0]?.v || 1;
+    $('#desp-por-tipo').innerHTML = porTipo.map(({ c, v }) => `<li><span class="pt-nome">${esc(c)}</span>
+      <span class="pt-barra"><span style="width:${Math.max(3, (v / max) * 100)}%"></span></span><span class="pt-valor mono">${fmtMoeda(v)}</span></li>`).join('') ||
+      '<li class="muted">Sem despesas no período.</li>';
+
+    // Filtros e lista
+    $('#pills-despesas').innerHTML = [['', 'Todos'], ...CAT_DESPESA.map((c) => [c, c])].map(([k, rot]) => {
+      const n = todas.filter((x) => !k || x.d.categoria === k).length;
+      return k && !n ? '' : `<button class="pill ${ui.pillD === k ? 'active' : ''}" data-pill-d="${esc(k)}">${esc(rot)} <b>${n}</b></button>`;
+    }).join('');
+    $('#periodo-despesas').value = ui.periodoD;
+    const lista = listaDespesas();
+    $('#tabela-despesas tbody').innerHTML = lista.slice(0, 400).map(({ l, d }) => `<tr class="clickable" data-lic="${l.id}" data-desp="${d.id}">
+      <td class="mono nowrap">${fmtData(d.data)}</td>
+      <td>${esc(d.categoria)}${d.anexos?.length ? ' <span class="muted small">📎</span>' : ''}</td>
+      <td>${esc(d.descricao || d.motivo || '')}${d.km ? `<div class="muted small">${Number(d.km).toLocaleString('pt-BR')} km</div>` : ''}</td>
+      <td><span class="mono small">${esc(docNumero(l))}</span><div class="muted small clamp1">${esc(l.orgao)}</div></td>
+      <td>${esc(d.pessoa || '—')}</td>
+      <td class="num mono">${fmtMoeda(d.valor)}</td></tr>`).join('') +
+      (lista.length ? `<tr class="linha-total"><td colspan="5"><strong>Total ${ui.pillD || ui.periodoD || $('#busca-despesas').value ? 'filtrado' : ''}</strong></td><td class="num mono"><strong>${fmtMoeda(soma(lista))}</strong></td></tr>` : '');
+    $('#vazio-despesas').hidden = lista.length > 0;
+    $('#tabela-despesas').parentElement.hidden = !lista.length;
+  }
+
   const PILLS_Z = [['', 'Todos'], ['entrega', 'Entregas'], ['pagamento', 'Pagamentos'], ['vigencia', 'Vigências']];
   function renderPrazos() {
     const conc = $('#f-prazo-concluidos').checked;
@@ -661,6 +735,7 @@
     renderContratoHead();
     renderSecItens();
     renderSecPedidos();
+    renderSecDespesas();
     renderAnexosContrato();
     $('#btn-excluir-contrato').hidden = !lic;
     $('#btn-salvar-contrato').textContent = lic ? 'Salvar alterações' : 'Lançar contrato / ata';
@@ -756,6 +831,25 @@
     numerarSecoes(dlgC);
   }
 
+  function renderSecDespesas() {
+    const sec = $('#sec-despesas');
+    const lic = licAtual();
+    if (!lic) { sec.innerHTML = ''; return; }
+    const desp = [...(lic.despesas || [])].sort((a, b) => (b.data || '').localeCompare(a.data || ''));
+    const total = totalDespesas(lic);
+    sec.innerHTML = `<div class="sec-head"><h3><span class="sec-n"></span> Despesas de viagem (${desp.length})</h3>
+        <button type="button" class="btn primary small so-editor" data-nova-despesa>＋ Nova despesa</button></div>
+      ${desp.length ? `<div class="table-wrap"><table class="table compact">
+        <thead><tr><th>Data</th><th>Tipo</th><th>Descrição</th><th>Quem</th><th class="num">Valor</th></tr></thead>
+        <tbody>${desp.map((d) => `<tr class="clickable" data-abrir-despesa="${d.id}">
+          <td class="mono">${fmtData(d.data)}</td><td>${esc(d.categoria)}${d.anexos?.length ? ' <span class="muted small">📎</span>' : ''}</td>
+          <td>${esc(d.descricao || d.motivo || '')}</td><td>${esc(d.pessoa || '—')}</td><td class="num mono">${fmtMoeda(d.valor)}</td></tr>`).join('')}
+          <tr class="linha-total"><td colspan="4"><strong>Total</strong>${lic.valor ? ` <span class="muted small">· ${((total / lic.valor) * 100).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}% do valor do contrato</span>` : ''}</td>
+          <td class="num mono"><strong>${fmtMoeda(total)}</strong></td></tr></tbody>
+      </table></div>` : '<p class="muted">Nenhuma despesa lançada. Registre aqui combustível, hospedagem, alimentação, pedágio e outros gastos de viagem deste contrato.</p>'}`;
+    numerarSecoes(dlgC);
+  }
+
   function renderAnexosContrato() {
     renderAnexos($('[data-anexos="contrato"]', dlgC), licAtual(), 'contrato');
   }
@@ -781,6 +875,9 @@
       return;
     }
     if (e.target.closest('[data-novo-pedido]')) { abrirPedido(dlgC.dataset.id, null); return; }
+    if (e.target.closest('[data-nova-despesa]')) { abrirDespesa(dlgC.dataset.id, null); return; }
+    const ad = e.target.closest('[data-abrir-despesa]');
+    if (ad) { abrirDespesa(dlgC.dataset.id, ad.dataset.abrirDespesa); return; }
     const ap = e.target.closest('[data-abrir-pedido]');
     if (ap) abrirPedido(dlgC.dataset.id, ap.dataset.abrirPedido);
   });
@@ -816,7 +913,7 @@
   $('#btn-excluir-contrato').addEventListener('click', () => {
     const lic = licAtual();
     if (somenteLeitura || !lic || !confirm(`Excluir ${docNumero(lic)} (${lic.orgao}) com todos os empenhos e documentos?`)) return;
-    const anexos = [...lic.anexos, ...lic.pedidos.flatMap((p) => p.anexos || [])];
+    const anexos = [...lic.anexos, ...lic.pedidos.flatMap((p) => p.anexos || []), ...(lic.despesas || []).flatMap((d) => d.anexos || [])];
     db.licitacoes = db.licitacoes.filter((l) => l !== lic);
     sujoC = false;
     dlgC.close();
@@ -932,9 +1029,55 @@
     toast('Empenho excluído.');
   });
 
+  // ---------- Diálogo: despesa de viagem ----------
+  const dlgD = $('#dlg-despesa');
+  const formD = $('#form-despesa');
+  let ctxD = null; // {lic, d}
+
+  function abrirDespesa(licId, despId) {
+    const lic = db.licitacoes.find((l) => l.id === licId);
+    if (!lic) return;
+    lic.despesas ||= [];
+    const d = despId ? lic.despesas.find((x) => x.id === despId) : null;
+    ctxD = { lic, d };
+    formD.reset();
+    escreverForm(formD, d || { data: hojeISO(), categoria: 'Combustível', motivo: 'Entrega / instalação' });
+    travarCampos(formD);
+    $('#despesa-titulo').textContent = d ? 'Despesa de viagem' : 'Nova despesa de viagem';
+    $('#despesa-contrato').textContent = `${INSTRUMENTO[lic.instrumento] || 'Contrato'} ${docNumero(lic)} · ${lic.orgao}`;
+    $('#btn-excluir-despesa').hidden = !d;
+    $('#btn-salvar-despesa').textContent = d ? 'Salvar alterações' : 'Lançar despesa';
+    renderAnexos($('[data-anexos="despesa"]', dlgD), d, 'despesa');
+    if (!dlgD.open) dlgD.showModal();
+  }
+
+  formD.addEventListener('submit', (e) => {
+    e.preventDefault();
+    if (somenteLeitura) return;
+    const f = lerForm(formD);
+    if (!f.data) { toast('Informe a data.'); return; }
+    if (!(f.valor > 0)) { toast('Informe o valor da despesa.'); formD.valor.focus(); return; }
+    const { lic, d } = ctxD;
+    if (d) Object.assign(d, f);
+    else { const nova = { id: uid(), anexos: [], ...f }; lic.despesas.push(nova); ctxD.d = nova; }
+    salvar();
+    if (!d) { abrirDespesa(lic.id, ctxD.d.id); toast('Despesa lançada. Anexe o comprovante abaixo, se tiver.'); }
+    else { dlgD.close(); toast('Despesa atualizada.'); }
+  });
+  $('#btn-excluir-despesa').addEventListener('click', () => {
+    const { lic, d } = ctxD || {};
+    if (somenteLeitura || !d || !confirm(`Excluir a despesa de ${fmtMoeda(d.valor)} (${d.categoria})?`)) return;
+    lic.despesas = lic.despesas.filter((x) => x !== d);
+    for (const a of d.anexos || []) window.Arquivos?.excluir(a).catch(() => {});
+    dlgD.close();
+    salvar();
+    toast('Despesa excluída.');
+  });
+
   // ---------- Documentos anexos ----------
   const CATEGORIAS = {
     contrato: ['Ata de registro de preços', 'Contrato', 'Publicação', 'Termo aditivo', 'Edital', 'Proposta', 'Outro'],
+    despesa: ['Nota / cupom fiscal', 'Recibo', 'Outro'],
     pedido: ['Nota de empenho', 'Ordem de fornecimento', 'Nota fiscal', 'Canhoto / comprovante de entrega', 'Comprovante de pagamento', 'Outro'],
   };
   const ICONE = (m = '', n = '') => (/pdf/.test(m) || /\.pdf$/i.test(n) ? '📄' : /image/.test(m) ? '🖼️' : /sheet|excel|csv/.test(m) || /\.(xlsx?|csv)$/i.test(n) ? '📊' : /word|doc/.test(m) ? '📝' : '📎');
@@ -1119,6 +1262,11 @@
   // ---------- Exportar para Excel ----------
   const numBR = (v) => (Number(v) || 0).toFixed(2).replace('.', ',');
   function linhasExport(tipo) {
+    if (tipo === 'despesas') {
+      const cab = ['Data', 'Tipo', 'Motivo', 'Descrição', 'Quem', 'Km', 'Valor', 'Empresa', 'Contrato/ata', 'Órgão', 'Comprovante'];
+      return [cab, ...listaDespesas().map(({ l, d }) => [fmtData(d.data), d.categoria, d.motivo, d.descricao, d.pessoa, d.km, numBR(d.valor),
+        nomeEmpresa(empresaDe(l)), docNumero(l), l.orgao, d.anexos?.length ? 'sim' : 'não'])];
+    }
     if (tipo === 'contratos') {
       const cab = ['Empresa', 'Tipo', 'Nº contrato/ata', 'Órgão', 'CNPJ do órgão', 'Licitação', 'Processo', 'Objeto', 'Analista', 'Status',
         'Ação pendente', 'Assinado por nós', 'Assinado pelo órgão', 'Publicado', 'Vigência início', 'Vigência fim', 'Valor total', 'Empenhado', 'Entregue', 'Saldo a executar', 'Saldo a empenhar'];
@@ -1168,13 +1316,16 @@
     if (pc) { ui.pillC = pc.dataset.pillC; salvarUI(); renderContratos(); return; }
     const pp = e.target.closest('[data-pill-p]');
     if (pp) { ui.pillP = pp.dataset.pillP; salvarUI(); renderPedidos(); return; }
+    const pd = e.target.closest('[data-pill-d]');
+    if (pd) { ui.pillD = pd.dataset.pillD; salvarUI(); renderDespesas(); return; }
     const pz = e.target.closest('[data-pill-z]');
     if (pz) { ui.pillZ = pz.dataset.pillZ; salvarUI(); renderPrazos(); return; }
     const ir = e.target.closest('[data-ir]');
     if (ir) { if (ir.dataset.pill) ui.pillC = ir.dataset.pill; mostrarView(ir.dataset.ir); renderContratos(); return; }
     const row = e.target.closest('[data-lic]');
     if (row && !e.target.closest('dialog') && !e.target.closest('a')) {
-      if (row.dataset.pedido) abrirPedido(row.dataset.lic, row.dataset.pedido);
+      if (row.dataset.desp) abrirDespesa(row.dataset.lic, row.dataset.desp);
+      else if (row.dataset.pedido) abrirPedido(row.dataset.lic, row.dataset.pedido);
       else abrirContrato(row.dataset.lic);
     }
   });
@@ -1186,6 +1337,8 @@
   $('#ordem-contratos').addEventListener('change', (e) => { ui.ordemC = e.target.value; salvarUI(); renderContratos(); });
   $('#ordem-pedidos').addEventListener('change', (e) => { ui.ordemP = e.target.value; salvarUI(); renderPedidos(); });
   $('#f-prazo-concluidos').addEventListener('change', renderPrazos);
+  $('#busca-despesas').addEventListener('input', renderDespesas);
+  $('#periodo-despesas').addEventListener('change', (e) => { ui.periodoD = e.target.value; salvarUI(); renderDespesas(); });
   $('#btn-novo').addEventListener('click', () => abrirContrato(null));
 
   // ---------- Backup ----------
@@ -1222,12 +1375,15 @@
       if (!atual) { db.licitacoes.push(l); novos++; continue; }
       // Atualiza só os campos preenchidos no arquivo; mantém empenhos, documentos e o que já foi feito
       for (const [k, v] of Object.entries(l)) {
-        if (['id', 'pedidos', 'anexos', 'etapas'].includes(k)) continue;
+        if (['id', 'pedidos', 'anexos', 'etapas', 'despesas'].includes(k)) continue;
         if (v !== '' && v != null && !(Array.isArray(v) && !v.length)) atual[k] = v;
       }
       atual.etapas = { ...(l.etapas || {}), ...Object.fromEntries(Object.entries(atual.etapas || {}).filter(([, v]) => v)) };
       const ids = new Set(atual.pedidos.map((p) => p.id));
       for (const p of l.pedidos || []) if (!ids.has(p.id)) atual.pedidos.push(p);
+      atual.despesas ||= [];
+      const idsD = new Set(atual.despesas.map((d) => d.id));
+      for (const d of l.despesas || []) if (!idsD.has(d.id)) atual.despesas.push(d);
       atualizados++;
     }
     return { novos, atualizados, empresas };

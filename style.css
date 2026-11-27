@@ -461,3 +461,16 @@ html:not(.somente-leitura) .so-leitor { display: none !important; }
 .txt-danger { color: var(--danger); font-weight: 700; }
 .txt-warn { color: var(--warn); font-weight: 700; }
 .txt-ok { color: var(--ok); }
+
+/* Despesas de viagem */
+.grid-desp { display: grid; grid-template-columns: 3fr 2fr; gap: 1rem; margin-bottom: 1.1rem; }
+.table-wrap.plano { border: 0; border-radius: 0; }
+.por-tipo { list-style: none; margin: 0; padding: 0; display: grid; gap: .55rem; }
+.por-tipo li { display: grid; grid-template-columns: minmax(110px, 1.2fr) 2fr auto; gap: .6rem; align-items: center; font-size: .9rem; }
+.pt-barra { height: 10px; background: var(--surface-2); border-radius: 99px; overflow: hidden; }
+.pt-barra > span { display: block; height: 100%; background: var(--primary); border-radius: 99px; }
+.pt-valor { font-size: .85rem; white-space: nowrap; }
+.table tr.linha-total td { background: var(--surface-2); }
+#dlg-despesa { width: min(620px, calc(100vw - 32px)); }
+.despesa-docs { margin: 1rem 0 0; }
+@media (max-width: 1000px) { .grid-desp { grid-template-columns: 1fr; } }
